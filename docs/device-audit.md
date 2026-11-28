@@ -19,9 +19,8 @@ a bridge, cannot be audited.
 
 A device in your project that uses the same address is paused while the audit runs, and
 reconnects when you finish. While it is paused it takes no command from a panel, a macro or a
-schedule, a Wake-on-LAN Power On included, so nothing switches the equipment on or off in the
-middle of a test. Its device page says it is paused for a Device Audit; pressing
-**Resume** there reconnects it, and the audit stops pausing it. If OpenAVC stops or restarts
+schedule, a Wake-on-LAN Power On included. Its device page says it is paused for a Device
+Audit; pressing **Resume** there reconnects it, and the audit stops pausing it. If OpenAVC stops or restarts
 during an audit, the audit ends and the device reconnects when OpenAVC starts again.
 
 ## Starting an Audit

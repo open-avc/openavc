@@ -197,6 +197,8 @@ SCENARIOS = [
     "python_literals",
     "skip_if_offline",
     "group_offline",
+    "skip_if_offline_wake",
+    "group_offline_wake",
     "skip_if_alias",
     "trigger_gte",
     "wait_until_timeout_fail",
@@ -602,6 +604,27 @@ class TestOfflineGuards:
         })
         r.run()
         assert r.devices.sent == [("d_on", "power_on", None)]
+
+
+    @pytest.mark.parametrize(("presence", "sent"), [
+        ("offline", True), ("asleep", True), ("connecting", True),
+        ("paused", False), ("disabled", False), ("waiting_for_driver", False),
+    ])
+    def test_a_wake_is_skipped_only_where_no_command_goes_out(self, generated, presence, sent):
+        r = _exec_script(generated["skip_if_offline_wake"]["script"], {
+            "device.tv.connected": False, "device.tv.presence": presence,
+        })
+        r.run()
+        assert r.devices.sent == ([("tv", "wake", None)] if sent else [])
+
+    def test_a_group_wake_skips_only_the_members_that_take_no_command(self, generated):
+        r = _exec_script(generated["group_offline_wake"]["script"], {
+            "device.d_up.connected": True, "device.d_up.presence": "online",
+            "device.d_off.connected": False, "device.d_off.presence": "offline",
+            "device.d_paused.connected": False, "device.d_paused.presence": "paused",
+        })
+        r.run()
+        assert r.devices.sent == [("d_up", "wake", None), ("d_off", "wake", None)]
 
 
 class TestCompareExport:

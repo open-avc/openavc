@@ -26,8 +26,8 @@ fn(moduleObj.exports, require, moduleObj, helpersPath, path.dirname(helpersPath)
 const H = moduleObj.exports;
 
 const results = {};
-function gen(name, macro, groups, meta) {
-  results[name] = { script: H.macroToScript(macro, groups), meta: meta || {} };
+function gen(name, macro, groups, meta, worksOffline) {
+  results[name] = { script: H.macroToScript(macro, groups, worksOffline), meta: meta || {} };
 }
 
 // --- Coercion: conditional / wait_until comparisons must behave like the
@@ -126,6 +126,24 @@ gen("group_offline", {
     { action: "group.command", group: "g1", command: "power_on" },
   ],
 }, [{ id: "g1", name: "G1", device_ids: ["d_on", "d_off"] }]);
+
+// --- a command that works with the device offline (a Wake-on-LAN Power On)
+// is skipped only where no command goes out: a paused device ---
+const wakeOnly = (deviceId, command) => command === "wake";
+gen("skip_if_offline_wake", {
+  id: "m6b",
+  name: "Wake Guard",
+  steps: [
+    { action: "device.command", device: "tv", command: "wake", skip_if_offline: true },
+  ],
+}, [], {}, wakeOnly);
+gen("group_offline_wake", {
+  id: "m6c",
+  name: "Group Wake",
+  steps: [
+    { action: "group.command", group: "g1", command: "wake" },
+  ],
+}, [{ id: "g1", name: "G1", device_ids: ["d_up", "d_off", "d_paused"] }], {}, wakeOnly);
 
 // --- Operator aliases (">=", "==") must evaluate, not silently turn into eq ---
 gen("skip_if_alias", {

@@ -3005,14 +3005,24 @@ const tests = {
         const marked = (id) => app.root.querySelector(`[data-element-id="${id}"]`).classList.contains('action-offline');
         const refused = new Set(['paused', 'disabled', 'waiting_for_driver']);
         const words = ['disabled', 'waiting_for_driver', 'online', 'restarting', 'asleep', 'paused', 'offline', 'connecting'];
-        for (const word of words) {
-            for (const amp of ['online', 'offline']) {
-                app.state = { 'device.tv.presence': word, 'device.amp.presence': amp };
-                app.evaluateAllBindings();
-                const want = { on: refused.has(word), all: refused.has(word) && amp !== 'online' };
-                const got = { on: marked('on'), all: marked('all') };
-                assert(JSON.stringify(got) === JSON.stringify(want),
-                    `tv ${word}, amp ${amp}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+        // Drawn whole, and as a live change of the one key, which is how a
+        // pause reaches a panel that is already up.
+        for (const keyed of [false, true]) {
+            for (const word of words) {
+                for (const amp of ['online', 'offline']) {
+                    const changed = { 'device.tv.presence': word, 'device.amp.presence': amp };
+                    if (keyed) {
+                        Object.assign(app.state, changed);
+                        app.evaluateAllBindings(Object.keys(changed));
+                    } else {
+                        app.state = changed;
+                        app.evaluateAllBindings();
+                    }
+                    const want = { on: refused.has(word), all: refused.has(word) && amp !== 'online' };
+                    const got = { on: marked('on'), all: marked('all') };
+                    assert(JSON.stringify(got) === JSON.stringify(want),
+                        `${keyed ? 'keyed' : 'whole'}: tv ${word}, amp ${amp}: want ${JSON.stringify(want)}, got ${JSON.stringify(got)}`);
+                }
             }
         }
         app.state = {};
