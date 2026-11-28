@@ -114,9 +114,12 @@ export function blankDrawn(model, field, word) {
 
 /**
  * A press's timing in milliseconds (`hold_repeat_ms`, `hold_threshold_ms`,
- * on the press's first action): the one written, or the table's default for
- * a blank one, none written or 0.
+ * on the press's first action): the one written when it is a number above 0,
+ * else the table's default (none written, 0, a negative one, words). A
+ * negative repeat would send a held press as fast as the browser runs a
+ * timer.
  */
 export function pressTiming(raw, field) {
-    return raw || PROJECT_VALUES.UIElement[`bindings.do.press.${field}`].default;
+    const ms = typeof raw === 'boolean' ? NaN : Number(raw);
+    return ms > 0 ? ms : PROJECT_VALUES.UIElement[`bindings.do.press.${field}`].default;
 }

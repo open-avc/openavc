@@ -16,8 +16,8 @@
 // named, a blank one included, reads as the one `otherwise` names. A key inside a field (`style.cell_size`) with
 // `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
 // never as a size of 0. A key inside `bindings` is a press's timing in
-// milliseconds, on the press's first action; one not written, or 0, is its
-// `default`. A fixed-choice field lists its `words`, and any other
+// milliseconds, on the press's first action; one that is no number above 0
+// (not written, 0, a negative one, words) is its `default`. A fixed-choice field lists its `words`, and any other
 // word, a blank one included, reads as the one `otherwise` names (null: as
 // nothing). Such a word is kept as written, never refused.
 //

@@ -655,8 +655,9 @@ class UIElement(_ForwardCompatModel):
     #: ``bindings.do.press`` (the one carrying the press's mode): a
     #: hold-repeat sends its press again every ``hold_repeat_ms``, and a
     #: tap-and-hold is a long press once held ``hold_threshold_ms``. One that
-    #: is not written, or is 0, is the default here. The panel's press and the
-    #: Builder's fields read them from the generated table.
+    #: is no number above 0 (not written, 0, a negative one, words) is the
+    #: default here. The panel's press and the Builder's fields read them
+    #: from the generated table.
     KEY_DEFAULTS: ClassVar[dict[str, dict[str, Any]]] = {
         "bindings": {"do.press.hold_repeat_ms": 200, "do.press.hold_threshold_ms": 500},
     }

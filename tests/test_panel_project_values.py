@@ -181,9 +181,10 @@ def test_the_lock_screen_builds_its_box_from_the_table() -> None:
     assert 'maxlength="6"' not in source
 
 
-#: A press's timings, each over the same values: one written, and the blanks.
+#: A press's timings, each over the same values: one written, the blanks, and
+#: values that are no number of milliseconds (a negative one, words).
 TIMINGS = ("hold_repeat_ms", "hold_threshold_ms")
-TIMING_VALUES = [ABSENT, None, 0, "", 150, 2500]
+TIMING_VALUES = [ABSENT, None, 0, "", 150, 2500, "300", -5, "-5", "abc", True]
 #: The mode whose press reads each timing.
 TIMING_MODES = {"hold_repeat_ms": ("hold_repeat", "repeatMs"), "hold_threshold_ms": ("tap_hold", "thresholdMs")}
 
@@ -216,15 +217,28 @@ def _pressed_timings() -> dict:
 
 
 def test_a_press_reads_its_timings_as_the_schema_declares_them() -> None:
-    """A blank timing, a 0 included, is the schema's default; one written is
-    kept. The press reads both through the table, so the Builder's fields,
-    which read the same table, show what a press does."""
+    """A timing that is a number of milliseconds above 0 is kept; any other is
+    the schema's default. A negative one or words would repeat a held press
+    as fast as the browser runs a timer, or make every press a long one. The
+    press reads it through the table, so the Builder's fields, which read the
+    same table, show what a press does."""
     declared = UIElement.KEY_DEFAULTS["bindings"]
     pressed = _pressed_timings()
     for field in TIMINGS:
         default = declared[f"do.press.{field}"]
-        expected = [value if value not in (ABSENT, None, 0, "") else default for value in TIMING_VALUES]
+        expected = [_milliseconds(value) or default for value in TIMING_VALUES]
         assert pressed[field] == expected, f"{field} over {TIMING_VALUES}"
+
+
+def _milliseconds(value) -> float | None:
+    """A timing as a number above 0, or None."""
+    if isinstance(value, bool) or value in (ABSENT, None):
+        return None
+    try:
+        number = float(value)
+    except ValueError:
+        return None
+    return number if number > 0 else None
 
 
 def test_the_press_writes_no_timing_of_its_own() -> None:

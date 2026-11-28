@@ -43,10 +43,11 @@ export type PressTimingField = "hold_repeat_ms" | "hold_threshold_ms";
 
 /**
  * A press's timing in milliseconds as the Builder shows and stores it: the
- * one written, or the table's default for a blank one (none written, or 0),
- * the way the panel's press reads it (`pressTiming` in
- * web/panel/modules/project_values.js).
+ * one written when it is a number above 0, else the table's default (none
+ * written, 0, a negative one, words), the way the panel's press reads it
+ * (`pressTiming` in web/panel/modules/project_values.js).
  */
 export function pressTiming(raw: unknown, field: PressTimingField): number {
-  return Number(raw || ELEMENT_VALUES[`bindings.do.press.${field}`].default);
+  const ms = typeof raw === "boolean" ? NaN : Number(raw);
+  return ms > 0 ? ms : Number(ELEMENT_VALUES[`bindings.do.press.${field}`].default);
 }

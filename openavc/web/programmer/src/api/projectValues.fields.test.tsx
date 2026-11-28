@@ -294,4 +294,11 @@ describe("A button's press timings read the project schema's table", () => {
     renderPress("hold_repeat", { hold_repeat_ms: 400 });
     expect(screen.getByDisplayValue("400")).toBeTruthy();
   });
+
+  it("a timing that is no number above 0 shows and stores the table's blank", () => {
+    const onBindingsChange = renderPress("hold_repeat", { hold_repeat_ms: -40 });
+    const box = screen.getByDisplayValue("250");
+    fireEvent.change(box, { target: { value: "-5" } });
+    expect(onBindingsChange.mock.calls.at(-1)![0].press[0].hold_repeat_ms).toBe(250);
+  });
 });
