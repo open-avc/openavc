@@ -179,3 +179,58 @@ def test_the_lock_screen_builds_its_box_from_the_table() -> None:
     assert 'maxlength="${PIN_LENGTH}"' in source
     assert "typedText('UISettings', 'lock_code', input.value)" in source
     assert 'maxlength="6"' not in source
+
+
+#: A press's timings, each over the same values: one written, and the blanks.
+TIMINGS = ("hold_repeat_ms", "hold_threshold_ms")
+TIMING_VALUES = [ABSENT, None, 0, "", 150, 2500]
+#: The mode whose press reads each timing.
+TIMING_MODES = {"hold_repeat_ms": ("hold_repeat", "repeatMs"), "hold_threshold_ms": ("tap_hold", "thresholdMs")}
+
+_PRESS_SCRIPT = """
+const { pressOf } = await import(process.argv[1]);
+const { timings, modes } = JSON.parse(process.argv[2]);
+const out = {};
+for (const [field, values] of Object.entries(timings)) {
+    const [mode, read] = modes[field];
+    out[field] = values.map((value) => {
+        const action = { action: 'macro', macro: 'm', mode };
+        if (value !== '<absent>') action[field] = value;
+        return pressOf({ type: 'button', bindings: { do: { press: [action] } } })[read];
+    });
+}
+console.log(JSON.stringify(out));
+"""
+
+
+def _pressed_timings() -> dict:
+    if shutil.which("node") is None:
+        gates.skip_or_fail(gates.NODE, "node not installed")
+    cases = {"timings": {field: TIMING_VALUES for field in TIMINGS}, "modes": TIMING_MODES}
+    proc = subprocess.run(
+        ["node", "--input-type=module", "-e", _PRESS_SCRIPT, (MODULES / "press.js").as_uri(), json.dumps(cases)],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)
+
+
+def test_a_press_reads_its_timings_as_the_schema_declares_them() -> None:
+    """A blank timing, a 0 included, is the schema's default; one written is
+    kept. The press reads both through the table, so the Builder's fields,
+    which read the same table, show what a press does."""
+    declared = UIElement.KEY_DEFAULTS["bindings"]
+    pressed = _pressed_timings()
+    for field in TIMINGS:
+        default = declared[f"do.press.{field}"]
+        expected = [value if value not in (ABSENT, None, 0, "") else default for value in TIMING_VALUES]
+        assert pressed[field] == expected, f"{field} over {TIMING_VALUES}"
+
+
+def test_the_press_writes_no_timing_of_its_own() -> None:
+    source = (MODULES / "press.js").read_text(encoding="utf-8")
+    code = "\n".join(line for line in source.splitlines() if not line.lstrip().startswith(("*", "/**", "//")))
+    assert "pressTiming(" in code, "press.js reads its timings without pressTiming (modules/project_values.js)"
+    stray = [token for token in ("200", "500") if token in code]
+    assert not stray, f"press.js writes its own {stray}; read it from PROJECT_VALUES"
+

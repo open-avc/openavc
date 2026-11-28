@@ -12,7 +12,8 @@ or, for a blank another setting decides (the theme a
 project with no theme id draws, the format a clock with none draws), in the
 model's ``BLANK_FROM``, read by ``blank_drawn``; a style value whose 0 is blank
 (a crosspoint cell size) in ``UIElement.ZERO_IS_BLANK``, read by
-``style_is_blank``; a fixed choice's words, and what a word this release does
+``style_is_blank``; the blank of a key inside a dict field (a press's hold and
+repeat timings) in ``UIElement.KEY_DEFAULTS``; a fixed choice's words, and what a word this release does
 not know reads as, as ``OneOf``, read by ``reads_as`` (the word is kept as
 written: a later release's project loads here).
 ``python -m openavc.core.project_values_gen`` renders them into one
@@ -648,6 +649,17 @@ class UIElement(_ForwardCompatModel):
     #: control draws its own, as with none written (style_is_blank reads it).
     #: A crosspoint cell_size of 0 is the cell that fits the box.
     ZERO_IS_BLANK: ClassVar[dict[str, frozenset[str]]] = {"style": frozenset({"cell_size"})}
+
+    #: What a blank key inside a dict field is, by its path in the field.
+    #: A press's timings, in milliseconds, on the first action of
+    #: ``bindings.do.press`` (the one carrying the press's mode): a
+    #: hold-repeat sends its press again every ``hold_repeat_ms``, and a
+    #: tap-and-hold is a long press once held ``hold_threshold_ms``. One that
+    #: is not written, or is 0, is the default here. The panel's press and the
+    #: Builder's fields read them from the generated table.
+    KEY_DEFAULTS: ClassVar[dict[str, dict[str, Any]]] = {
+        "bindings": {"do.press.hold_repeat_ms": 200, "do.press.hold_threshold_ms": 500},
+    }
 
     @field_validator("id")
     @classmethod

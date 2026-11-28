@@ -37,3 +37,16 @@ export function styleIsBlank(key: string, value: unknown): boolean {
   const declared = Object.prototype.hasOwnProperty.call(ELEMENT_VALUES, path);
   return value === 0 && declared && ELEMENT_VALUES[path].zero_is_blank === true;
 }
+
+/** A press timing a button's first press action carries. */
+export type PressTimingField = "hold_repeat_ms" | "hold_threshold_ms";
+
+/**
+ * A press's timing in milliseconds as the Builder shows and stores it: the
+ * one written, or the table's default for a blank one (none written, or 0),
+ * the way the panel's press reads it (`pressTiming` in
+ * web/panel/modules/project_values.js).
+ */
+export function pressTiming(raw: unknown, field: PressTimingField): number {
+  return Number(raw || ELEMENT_VALUES[`bindings.do.press.${field}`].default);
+}

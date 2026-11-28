@@ -36,6 +36,7 @@
  * finger or a palm neither moves it nor ends it.
  */
 
+import { pressTiming } from './project_values.js';
 import { toggleLit } from './toggle.js';
 
 /** The ends of a drag that let it go where it is: a pointer, a mouse (a fader starts on its mousedown) or a touch lifted. */
@@ -147,7 +148,9 @@ const TAP_ONLY_TYPES = new Set(['camera_preset']);
 /**
  * What a control's press binding asks for. The binding is a list of actions,
  * and its mode and the mode's settings come from the first; a press that is
- * one action rather than a list is read the same way.
+ * one action rather than a list is read the same way. A blank hold or repeat
+ * timing is the project schema's (modules/project_values.js `pressTiming`),
+ * which the Builder's fields show.
  *
  * `toggleLook` is the binding a toggle's own indication draws from, with
  * where its two words are authored (`_labelBase`).
@@ -156,8 +159,8 @@ export function pressOf(element) {
     const { pressBinding, isList } = firstAction(element);
     return {
         mode: TAP_ONLY_TYPES.has(element.type) ? 'tap' : modeOf(pressBinding),
-        repeatMs: pressBinding.hold_repeat_ms || 200,
-        thresholdMs: pressBinding.hold_threshold_ms || 500,
+        repeatMs: pressTiming(pressBinding.hold_repeat_ms, 'hold_repeat_ms'),
+        thresholdMs: pressTiming(pressBinding.hold_threshold_ms, 'hold_threshold_ms'),
         // Read again at each press: the toggle compares what it says then.
         binding: pressBinding,
         toggleLook: toggleLookOf(pressBinding, isList),

@@ -7,8 +7,8 @@
  * draws what saving it would: a control's shown decimals, the page transition
  * and entry stagger, the idle page, the failure message switch, the theme a
  * project with no theme id draws, the format a clock with none draws and
- * whether a 0 crosspoint cell is one at all are read only here, and so is what
- * the lock screen's PIN box takes.
+ * whether a 0 crosspoint cell is one at all are read only here, and so are
+ * what the lock screen's PIN box takes and a press's hold and repeat timings.
  *
  * A number the table bounds is held to its range (the nearer end for one
  * outside it) and rounded where the schema takes whole numbers only. A blank
@@ -110,4 +110,13 @@ export function blankDrawn(model, field, word) {
     const [byValue] = Object.values(blankFrom);
     const named = typeof word === 'string' && Object.prototype.hasOwnProperty.call(byValue, word);
     return byValue[named ? word : otherwise];
+}
+
+/**
+ * A press's timing in milliseconds (`hold_repeat_ms`, `hold_threshold_ms`,
+ * on the press's first action): the one written, or the table's default for
+ * a blank one, none written or 0.
+ */
+export function pressTiming(raw, field) {
+    return raw || PROJECT_VALUES.UIElement[`bindings.do.press.${field}`].default;
 }

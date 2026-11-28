@@ -25,6 +25,7 @@ import { useConnectionStore } from "../../store/connectionStore";
 import { pressActionFields, pressAfterActionEdit } from "./buttonBindingHelpers";
 import { macroLabel } from "../macros/macroHelpers";
 import { booleanWord, valueText } from "./booleanWords";
+import { pressTiming } from "../../api/projectValues";
 
 export interface ButtonBindings {
   press?: Record<string, unknown>[] | null;
@@ -290,9 +291,9 @@ export function ButtonBindingEditor({
             <span style={hintStyle}>Repeat every</span>
             <input
               type="number"
-              value={Number(press.hold_repeat_ms || 200)}
+              value={pressTiming(press.hold_repeat_ms, "hold_repeat_ms")}
               min={50} max={2000} step={50}
-              onChange={(e) => updatePress({ hold_repeat_ms: parseInt(e.target.value) || 200 })}
+              onChange={(e) => updatePress({ hold_repeat_ms: pressTiming(parseInt(e.target.value), "hold_repeat_ms") })}
               style={{ ...inputStyle, width: 70 }}
             />
             <span style={hintStyle}>ms</span>
@@ -303,9 +304,9 @@ export function ButtonBindingEditor({
             <span style={hintStyle}>Long press threshold</span>
             <input
               type="number"
-              value={Number(press.hold_threshold_ms || 500)}
+              value={pressTiming(press.hold_threshold_ms, "hold_threshold_ms")}
               min={200} max={3000} step={100}
-              onChange={(e) => updatePress({ hold_threshold_ms: parseInt(e.target.value) || 500 })}
+              onChange={(e) => updatePress({ hold_threshold_ms: pressTiming(parseInt(e.target.value), "hold_threshold_ms") })}
               style={{ ...inputStyle, width: 70 }}
             />
             <span style={hintStyle}>ms</span>

@@ -13,7 +13,11 @@ vi.mock("./projectValues.gen", async (importOriginal) => {
   return {
     ...actual,
     PROJECT_VALUES: {
-      UIElement: { display_decimals: { default: null, min: 0, max: 7, integer: true } },
+      UIElement: {
+        display_decimals: { default: null, min: 0, max: 7, integer: true },
+        "bindings.do.press.hold_repeat_ms": { default: 250 },
+        "bindings.do.press.hold_threshold_ms": { default: 650 },
+      },
       MonitorConfig: { display_decimals: { default: null, min: 0, max: 5, integer: true } },
       UISettings: {
         idle_timeout_seconds: { default: 0, min: 0, max: 600, integer: true },
@@ -55,6 +59,7 @@ import { PanelSettingsDialog } from "../views/ui-builder/PanelSettingsDialog";
 import { PropertiesPanel } from "../components/ui-builder/PropertiesPanel";
 import { TriggerEditor } from "../components/macros/TriggerEditor";
 import { MacroCooldown } from "../components/macros/MacroCooldown";
+import { ButtonBindingEditor } from "../components/shared/ButtonBindingEditor";
 
 function typeAndLeave(box: HTMLInputElement, text: string) {
   fireEvent.focus(box);
@@ -255,5 +260,38 @@ describe("A macro's Cooldown reads the project schema's table", () => {
     const onUpdate = renderCooldown({ cooldown_seconds: 9 });
     typeAndLeave(screen.getByDisplayValue("9") as HTMLInputElement, "2");
     expect(onUpdate.mock.calls.at(-1)![0].cooldown_seconds).toBeUndefined();
+  });
+});
+
+describe("A button's press timings read the project schema's table", () => {
+  const project = { devices: [], macros: [], ui: { pages: [{ id: "main", name: "Main" }] } } as unknown as ProjectConfig;
+
+  function renderPress(mode: string, extra: Record<string, unknown> = {}) {
+    const onBindingsChange = vi.fn();
+    render(
+      <ButtonBindingEditor
+        bindings={{ press: [{ action: "macro", macro: "m", mode, ...extra }] }}
+        project={project}
+        onBindingsChange={onBindingsChange}
+      />,
+    );
+    return onBindingsChange;
+  }
+
+  it("Repeat every shows the table's blank, and a cleared one stores it", () => {
+    const onBindingsChange = renderPress("hold_repeat");
+    fireEvent.change(screen.getByDisplayValue("250"), { target: { value: "" } });
+    expect(onBindingsChange.mock.calls.at(-1)![0].press[0].hold_repeat_ms).toBe(250);
+  });
+
+  it("Long press threshold shows the table's blank, and a cleared one stores it", () => {
+    const onBindingsChange = renderPress("tap_hold", { hold_action: {} });
+    fireEvent.change(screen.getByDisplayValue("650"), { target: { value: "" } });
+    expect(onBindingsChange.mock.calls.at(-1)![0].press[0].hold_threshold_ms).toBe(650);
+  });
+
+  it("a timing written is shown as written", () => {
+    renderPress("hold_repeat", { hold_repeat_ms: 400 });
+    expect(screen.getByDisplayValue("400")).toBeTruthy();
   });
 });

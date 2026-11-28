@@ -15,7 +15,9 @@
 // that setting's value names it (null: that value draws none), and a value not
 // named, a blank one included, reads as the one `otherwise` names. A key inside a field (`style.cell_size`) with
 // `zero_is_blank` reads a 0 as a blank one, the control drawing its own size,
-// never as a size of 0. A fixed-choice field lists its `words`, and any other
+// never as a size of 0. A key inside `bindings` is a press's timing in
+// milliseconds, on the press's first action; one not written, or 0, is its
+// `default`. A fixed-choice field lists its `words`, and any other
 // word, a blank one included, reads as the one `otherwise` names (null: as
 // nothing). Such a word is kept as written, never refused.
 //
@@ -203,6 +205,12 @@ export const PROJECT_VALUES = {
         }
       },
       "otherwise": "time"
+    },
+    "bindings.do.press.hold_repeat_ms": {
+      "default": 200
+    },
+    "bindings.do.press.hold_threshold_ms": {
+      "default": 500
     },
     "style.cell_size": {
       "zero_is_blank": true
