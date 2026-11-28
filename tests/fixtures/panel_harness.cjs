@@ -4660,35 +4660,32 @@ const tests = {
         assert(routes() === 1, `a gesture the redraw ended still routed (${routes()} routes)`);
     },
 
-    // Two fingers down on the crosspoints and one lifted: one route goes out,
-    // the second finger's source to the first finger's destination. Pinned as
-    // it behaves; the gesture keeps one starting column per matrix.
+    // Two fingers down on the crosspoints, lifted in either order: one route
+    // goes out, the first finger's, when the first finger lifts. A matrix is
+    // routed one crosspoint at a time, so a second press while the first is
+    // held is ignored, and its lift ends nothing.
     matrix_two_fingers_on_the_crosspoints_send_one_route() {
-        const app = mkApp();
-        app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
-        renderProject(app, project({
-            elements: [{
-                id: 'mx', type: 'matrix',
-                matrix_config: {
-                    sources: [{ value: 1, label: 'A' }, { value: 2, label: 'B' }],
-                    destinations: [
-                        { value: 11, label: 'L', route_key: 'device.sw.route_1' },
-                        { value: 12, label: 'R', route_key: 'device.sw.route_2' },
-                    ],
-                },
-            }],
-            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
-        }));
-        const press = (type) => new window.MouseEvent(type, { bubbles: true, clientX: 5, clientY: 5 });
-        const cell = (src, dst) => app.root.querySelector(
-            `.matrix-crosspoint[data-input="${src}"][data-output="${dst}"]`).parentElement;
-        cell(1, 11).dispatchEvent(press('pointerdown'));
-        cell(2, 12).dispatchEvent(press('pointerdown'));
-        document.dispatchEvent(press('pointerup'));
-        const routes = app.ws.sent.filter(m => m.type === 'ui.route');
-        assert(JSON.stringify(routes) === JSON.stringify(
-            [{ type: 'ui.route', element_id: 'mx', input: 2, output: 11 }]),
-            `two fingers sent ${JSON.stringify(routes)}`);
+        for (const firstLiftsFirst of [true, false]) {
+            const order = firstLiftsFirst ? 'the first finger lifted first' : 'the second finger lifted first';
+            const { app, cell, routes } = twoByTwoMatrix();
+            const first = pointer({ pointerId: 2 }), second = pointer({ pointerId: 3, primary: false });
+            first(cell(1, 11), 'pointerdown', 5, 5);
+            second(cell(2, 12), 'pointerdown', 5, 5);
+            if (!firstLiftsFirst) {
+                second(document, 'pointerup', 5, 5);
+                assert(routes().length === 0, `${order}: its lift sent ${JSON.stringify(routes())}`);
+            }
+            first(document, 'pointerup', 5, 5);
+            if (firstLiftsFirst) second(document, 'pointerup', 5, 5);
+            assert(JSON.stringify(routes()) === JSON.stringify(
+                [{ type: 'ui.route', element_id: 'mx', input: 1, output: 11 }]),
+                `${order}: two fingers sent ${JSON.stringify(routes())}`);
+            // The matrix takes the next press, once.
+            second(cell(2, 12), 'pointerdown', 5, 5); second(document, 'pointerup', 5, 5);
+            assert(routes().length === 2 && routes()[1].input === 2 && routes()[1].output === 12,
+                `${order}: the next press after both lifted sent ${JSON.stringify(routes().slice(1))}`);
+            app.ws.sent.length = 0;
+        }
     },
 
     // A tile wall follows the arrangement being drawn: on a portrait page its
@@ -14013,6 +14010,70 @@ const touchAt = (target, type, x, y) => {
 };
 /** An event at the window alone, as its losing focus is. */
 const atTheWindow = (type) => window.dispatchEvent(new window.Event(type));
+/**
+ * One finger, a palm or the mouse, as a browser numbers it: `finger(target,
+ * type, x, y)` dispatches its pointer events, carrying its pointerId, and
+ * `finger.touch(target, type, x, y, down)` its touch events, carrying its own
+ * touch in changedTouches and `down` (the touches still on the glass) in
+ * touches. jsdom has no PointerEvent, so the pointer's fields are put on a
+ * MouseEvent. A browser numbers a touch's pointer and its touch apart.
+ */
+function pointer({ pointerId, touchId = null, type = 'touch', primary = true }) {
+    const finger = (target, eventType, x, y) => {
+        const e = new window.MouseEvent(eventType, { clientX: x, clientY: y, bubbles: true, cancelable: true });
+        Object.assign(e, { pointerId, pointerType: type, isPrimary: primary });
+        target.dispatchEvent(e);
+    };
+    finger.point = (target, x, y) => ({ identifier: touchId, target, clientX: x, clientY: y });
+    finger.touch = (target, eventType, x, y, down = []) => {
+        const e = new window.Event(eventType, { bubbles: true, cancelable: true });
+        e.changedTouches = [finger.point(target, x, y)];
+        e.touches = down;
+        target.dispatchEvent(e);
+    };
+    return finger;
+}
+/**
+ * A matrix of two sources (1, 2) by two destinations (11, 12) on a page:
+ * `cell(src, dst)` is a crosspoint's cell, `dot` its dot, `routes()` the
+ * routes sent and `lines()` the drag lines on the screen.
+ */
+function twoByTwoMatrix() {
+    const app = mkApp();
+    app.ws = { readyState: 1, sent: [], send(msg) { this.sent.push(JSON.parse(msg)); } };
+    renderProject(app, project({
+        elements: [{
+            id: 'mx', type: 'matrix',
+            matrix_config: {
+                sources: [{ value: 1, label: 'A' }, { value: 2, label: 'B' }],
+                destinations: [
+                    { value: 11, label: 'L', route_key: 'device.sw.route_1' },
+                    { value: 12, label: 'R', route_key: 'device.sw.route_2' },
+                ],
+            },
+        }],
+        placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+    }));
+    const dot = (src, dst) => app.root.querySelector(`.matrix-crosspoint[data-input="${src}"][data-output="${dst}"]`);
+    return {
+        app,
+        dot,
+        cell: (src, dst) => dot(src, dst).parentElement,
+        routes: () => app.ws.sent.filter((msg) => msg.type === 'ui.route'),
+        lines: () => document.querySelectorAll('.matrix-drag-line').length,
+    };
+}
+/**
+ * Run `fn` with jsdom's missing layout stood in for: (40, 40) is over the
+ * crosspoint routing source 1 to R, (70, 70) over source 2 to L.
+ */
+function withCrosspointsUnder(dot, fn) {
+    document.elementFromPoint = (x, y) => (x === 40 && y === 40 ? dot(1, 12) : x === 70 && y === 70 ? dot(2, 11) : null);
+    try { fn(); } finally {
+        // The stub was the document's own property; the prototype's (if any) shows again.
+        delete document.elementFromPoint;
+    }
+}
 /** How many listeners `run` put on the window and left there (one per type and handler). */
 function leftAtTheWindow(run) {
     // Each handler's types still on the window.
@@ -14154,6 +14215,113 @@ Object.assign(tests, {
         const routes = app.ws.sent.filter((msg) => msg.type === 'ui.route');
         assert(JSON.stringify(routes) === JSON.stringify([{ type: 'ui.route', element_id: 'mx', input: 1, output: 12 }]),
             `a drag let go by a lifted touch routed ${JSON.stringify(routes)}`);
+    },
+
+    // A crosspoint drag follows only the finger that started it. A palm or a
+    // second finger moving draws no line, and its lift lets nothing go, on the
+    // matrix or off it; the first finger then routes where it lets go, and
+    // nothing is left listening at the window.
+    a_crosspoint_drag_follows_only_its_own_finger() {
+        const routeTo = (input, output) => JSON.stringify([{ type: 'ui.route', element_id: 'mx', input, output }]);
+        for (const palmOn of ['the matrix', 'the page']) {
+            const { cell, dot, routes, lines } = twoByTwoMatrix();
+            const before = lines();
+            const finger = pointer({ pointerId: 2 }), palm = pointer({ pointerId: 3, primary: false });
+            withCrosspointsUnder(dot, () => {
+                const left = leftAtTheWindow(() => {
+                    finger(cell(1, 11), 'pointerdown', 5, 5);
+                    palm(palmOn === 'the matrix' ? cell(2, 11) : document.body, 'pointerdown', 70, 70);
+                    palm(document, 'pointermove', 140, 140);
+                    assert(lines() === before, `a palm on ${palmOn} moving drew ${lines() - before} line(s)`);
+                    finger(document, 'pointermove', 40, 40);
+                    assert(lines() === before + 1, `the finger's own drag drew ${lines() - before} line(s)`);
+                    palm(document, 'pointerup', 70, 70);
+                    assert(routes().length === 0, `a palm on ${palmOn} lifted sent ${JSON.stringify(routes())}`);
+                    assert(lines() === before + 1, `a palm on ${palmOn} lifted took the finger's line away`);
+                    finger(document, 'pointerup', 40, 40);
+                });
+                assert(JSON.stringify(routes()) === routeTo(1, 12),
+                    `with a palm on ${palmOn}, the finger's drag routed ${JSON.stringify(routes())}`);
+                assert(lines() === before, `with a palm on ${palmOn}, ${lines() - before} line(s) left after the lift`);
+                assert(left === 0, `with a palm on ${palmOn}, ${left} listener(s) left at the window`);
+            });
+        }
+    },
+
+    // A crosspoint drag let go by touches alone, with no pointer event
+    // after them: the lift of another finger lets nothing go, and the drag
+    // routes where its own touch lifted, alone or lifted with another. A
+    // touch's own number is learnt from the touchstart that follows its
+    // press. A mouse event is the primary finger's, never a second finger's.
+    // A touch lifted with no event of its own ends the gesture at the next
+    // lift that shows it gone from the glass, routing nothing, a tap or a
+    // drag: whether and where it let go is not known.
+    a_crosspoint_drag_is_let_go_by_its_own_touch() {
+        const routeTo = (input, output) => JSON.stringify([{ type: 'ui.route', element_id: 'mx', input, output }]);
+        const rounds = {
+            'the other finger lifted first': [(finger, other, lift) => {
+                other.touch(document, 'touchend', 70, 70, [finger.point(null, 40, 40)]);
+                lift();
+            }, routeTo(1, 12)],
+            'both lifted together': [(finger, other) => {
+                const e = new window.Event('touchend', { bubbles: true, cancelable: true });
+                e.changedTouches = [other.point(null, 70, 70), finger.point(null, 40, 40)];
+                e.touches = [];
+                document.dispatchEvent(e);
+            }, routeTo(1, 12)],
+            'a mouse event from the other, primary finger': [(finger, other, lift) => {
+                mouseAt(document, 'mouseup', 70, 70);
+                lift();
+            }, routeTo(1, 12)],
+            'its own lift never delivered, the other lifted after it': [(finger, other) => {
+                other.touch(document, 'touchend', 70, 70, []);
+            }, '[]'],
+            'its own lift never delivered on a tap, the other lifted after it': [(finger, other) => {
+                other.touch(document, 'touchend', 70, 70, []);
+            }, '[]', 'a tap'],
+        };
+        for (const [how, [round, routed, tapped]] of Object.entries(rounds)) {
+            const { cell, dot, routes, lines } = twoByTwoMatrix();
+            const before = lines();
+            const otherFirst = how.includes('primary');
+            const finger = pointer({ pointerId: 2, touchId: 0, primary: !otherFirst });
+            const other = pointer({ pointerId: 3, touchId: 1, primary: otherFirst });
+            withCrosspointsUnder(dot, () => {
+                const down = [];
+                const press = (who, target, x, y) => {
+                    who(target, 'pointerdown', x, y);
+                    down.push(who.point(target, x, y));
+                    who.touch(target, 'touchstart', x, y, [...down]);
+                };
+                if (otherFirst) press(other, document.body, 70, 70);
+                press(finger, cell(1, 11), 5, 5);
+                if (!otherFirst) press(other, cell(2, 12), 70, 70);
+                if (!tapped) finger(document, 'pointermove', 40, 40);
+                round(finger, other, () => {
+                    assert(routes().length === 0, `${how}: the other finger's lift sent ${JSON.stringify(routes())}`);
+                    assert(lines() === before + 1, `${how}: the other finger's lift took the line away`);
+                    finger.touch(document, 'touchend', 40, 40, []);
+                });
+            });
+            assert(JSON.stringify(routes()) === routed, `${how}: the drag routed ${JSON.stringify(routes())}`);
+            assert(lines() === before, `${how}: ${lines() - before} line(s) left after the lift`);
+        }
+    },
+
+    // A press by the same pointer as a crosspoint gesture still open is that
+    // pointer back down after an end the browser never delivered: the open
+    // gesture is over, routing nothing, and the new press routes its own cell.
+    a_crosspoint_pressed_again_by_its_own_pointer_starts_again() {
+        const { cell, routes, lines } = twoByTwoMatrix();
+        const before = lines();
+        const mouse = pointer({ pointerId: 1, type: 'mouse' });
+        mouse(cell(1, 11), 'pointerdown', 5, 5);
+        mouse(document, 'pointermove', 60, 60);
+        mouse(cell(2, 12), 'pointerdown', 5, 5);
+        assert(lines() === before, `the press again left ${lines() - before} line(s) of the gesture it ended`);
+        mouse(document, 'pointerup', 5, 5);
+        assert(JSON.stringify(routes()) === JSON.stringify([{ type: 'ui.route', element_id: 'mx', input: 2, output: 12 }]),
+            `a press again by the same pointer routed ${JSON.stringify(routes())}`);
     },
 });
 

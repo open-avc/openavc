@@ -533,6 +533,12 @@ SCENARIOS = [
     "a_crosspoint_drag_ends_on_a_cancel_and_a_lost_focus",
     # A crosspoint drag let go by a lifted touch alone routes where it lifted.
     "a_crosspoint_drag_let_go_by_a_lifted_touch_routes_where_it_lifted",
+    # A crosspoint drag follows only the finger that started it: another
+    # finger's or a palm's move draws nothing and its lift ends nothing, by
+    # pointer or by touch; the same pointer pressing again starts again.
+    "a_crosspoint_drag_follows_only_its_own_finger",
+    "a_crosspoint_drag_is_let_go_by_its_own_touch",
+    "a_crosspoint_pressed_again_by_its_own_pointer_starts_again",
     # A control's caption, the icon beside its words on every side, words a
     # look or an override changes beside an icon, and the accessible name,
     # pinned whole (tests/fixtures/panel_words_pins.json).

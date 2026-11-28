@@ -28,7 +28,9 @@
  * of events, `DRAG_ENDS`: a pointer, a mouse or a touch let go, the browser
  * cancelling the pointer or the touch, or the window losing focus with the
  * finger or the mouse still down. A drag that missed its end would stay
- * held, following the next finger anywhere on the page.
+ * held, following the next finger anywhere on the page. A crosspoint's drag
+ * also follows only the finger that started it (`dragPointer`), so a second
+ * finger or a palm neither moves it nor ends it.
  */
 
 import { sameValue } from './compare.js';
@@ -47,13 +49,15 @@ const DRAG_ABANDONED = ['pointercancel', 'touchcancel', 'blur'];
 export const DRAG_ENDS = [...DRAG_LET_GO, ...DRAG_ABANDONED];
 
 /**
- * End a drag at the first of its ends the window hears, once:
- * `onEnd(event, letGo)`, `letGo` false for a cancel or a lost focus. Every
- * listener comes off at that first end; the function returned takes them off
- * for a drag something else ended (its page redrawn).
+ * End a drag at the first of its ends the window hears that `owns` says is
+ * its own (every end, when it is not given), once: `onEnd(event, letGo)`,
+ * `letGo` false for a cancel or a lost focus. Every listener comes off at
+ * that end; the function returned takes them off for a drag something else
+ * ended (its page redrawn).
  */
-export function endDragAtTheWindow(onEnd) {
+export function endDragAtTheWindow(onEnd, owns = () => true) {
     const end = (e) => {
+        if (!owns(e)) return;
         stop();
         onEnd(e, DRAG_LET_GO.includes(e.type));
     };
@@ -62,6 +66,72 @@ export function endDragAtTheWindow(onEnd) {
     };
     for (const type of DRAG_ENDS) window.addEventListener(type, end, { passive: true });
     return stop;
+}
+
+/**
+ * The one finger, pen or mouse a drag follows: the one whose press, `down`
+ * on `target`, started it. Another finger or a palm on the glass is not the
+ * drag's, so its move draws nothing and its lift ends nothing. Told apart:
+ *
+ *   a pointer event -- by its pointerId;
+ *   a touch event   -- by the drag's own touch, learnt from the first
+ *                      touchstart `target` hears after a touch's press (a
+ *                      browser sends a finger's pointerdown and then its
+ *                      touchstart, and numbers the two apart); a lift is the
+ *                      drag's when its own touch is no longer on the glass,
+ *                      lifted now or lifted with no event of its own;
+ *   a mouse event   -- the drag's only while its pointer is the primary one,
+ *                      the only one a browser makes mouse events for.
+ *
+ * The window losing focus, and a touch event while the drag's own touch is
+ * not known, are every drag's: nothing tells them apart, and a drag that let
+ * one pass could miss its only end.
+ *
+ * `owns(e)` says whether an event is the drag's, `pointOf(e)` where the
+ * drag's pointer was for it (a lifted touch carries its point in
+ * changedTouches; null for a touch that lifted with no event of its own),
+ * and `stop()` stops listening for the touch.
+ */
+export function dragPointer(down, target) {
+    const touch = learnTouch(down, target);
+    return {
+        owns: (e) => ownsEvent(e, down, touch.id),
+        pointOf(e) {
+            if (!e.changedTouches) return e;
+            return touch.id === null ? e.changedTouches[0] : (touchIn(e.changedTouches, touch.id) || null);
+        },
+        stop: () => touch.stop(),
+    };
+}
+
+/** The touch a press made: its number (null while not known), learnt from the first touchstart `target` hears after a touch's press. */
+function learnTouch(down, target) {
+    const touch = { id: null, stop: () => {} };
+    if (down.pointerType !== 'touch') return touch;
+    const learn = (e) => {
+        const own = Array.from(e.changedTouches || []).find((t) => target.contains(t.target));
+        if (own) touch.id = own.identifier;
+    };
+    target.addEventListener('touchstart', learn, { once: true, passive: true });
+    touch.stop = () => target.removeEventListener('touchstart', learn);
+    return touch;
+}
+
+/** The touch numbered `id` among `touches`, or undefined. */
+const touchIn = (touches, id) => Array.from(touches || []).find((t) => t.identifier === id);
+
+/** Whether `e` is the drag's that `down` pressed, its own touch numbered `touchId`. */
+function ownsEvent(e, down, touchId) {
+    if (e.type.startsWith('pointer')) return e.pointerId === down.pointerId;
+    if (e.type.startsWith('touch')) return ownsTouchEvent(e, touchId);
+    if (e.type.startsWith('mouse')) return down.isPrimary !== false;
+    return true;
+}
+
+/** A touch event is the drag's when its own touch is not known, lifted now, or no longer on the glass. */
+function ownsTouchEvent(e, touchId) {
+    if (touchId === null || touchIn(e.changedTouches, touchId)) return true;
+    return !touchIn(e.touches, touchId);
 }
 
 /**

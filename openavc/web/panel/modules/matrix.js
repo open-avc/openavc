@@ -26,7 +26,7 @@
  */
 
 import { truthOf } from './compare.js';
-import { endDragAtTheWindow } from './press.js';
+import { dragPointer, endDragAtTheWindow } from './press.js';
 import { styleSize } from './project_values.js';
 
 // How far a finger may travel on a matrix crosspoint before the gesture stops
@@ -973,9 +973,8 @@ class TileMatrix extends MatrixControl {
 class CrosspointMatrix extends MatrixControl {
     constructor(element, style, host) {
         super(element, style, host);
-        // Shared by every cell of this matrix: the line a drag draws, and the
-        // column the gesture in progress started from.
-        this.drag = { line: null, startInput: null };
+        // The crosspoint gesture in progress, or null: one at a time.
+        this.gesture = null;
     }
 
     nameSelector() {
@@ -1152,11 +1151,21 @@ class CrosspointMatrix extends MatrixControl {
         return legend;
     }
 
+    /**
+     * A press on a crosspoint starts its gesture, unless one is open: a matrix
+     * is routed one crosspoint at a time, and a second finger is far more
+     * often a palm or a slip. The same pointer pressing again is that
+     * pointer back down after an end the browser never delivered, so the
+     * open gesture ends, routing nothing, and the press starts again.
+     */
     startGesture(e, cell, i, o) {
+        if (this.gesture) {
+            if (!this.gesture.pointer.owns(e)) return;
+            this.gesture.finish(null);
+        }
         if (this.isLocked(o)) return;
-        const gesture = new RouteGesture(this, e, cell, o);
-        this.drag.startInput = i;
-        gesture.listen();
+        this.gesture = new RouteGesture(this, e, { cell, i, o });
+        this.gesture.listen();
     }
 
     /** Route the source in column `srcIdx` to the destination in row `destIdx`, unless that row is locked. */
@@ -1165,10 +1174,6 @@ class CrosspointMatrix extends MatrixControl {
         const from = this.sources[srcIdx], to = this.destinations[destIdx];
         if (!from || !to) return;
         this.sendRoute(from.value, to.value);
-    }
-
-    dropLine() {
-        if (this.drag.line) { this.drag.line.remove(); this.drag.line = null; }
     }
 
     updateRoutes(routes) {
@@ -1222,11 +1227,18 @@ function toggleCell(button) {
  * A cell with a click handler as well as a drag would send a tap twice, and
  * routing on any drag would route on the drag that SCROLLS an oversized grid,
  * which is the very gesture a matrix bigger than its box forces on you.
+ *
+ * The gesture follows only the pointer that pressed (press.js `dragPointer`):
+ * another finger or a palm moving draws no line, and its lift ends nothing.
  */
 class RouteGesture {
-    constructor(matrix, e, cell, o) {
+    /** A press `e` on the crosspoint `cell` in column `i` and row `o`, indices: index 0 is a real source. */
+    constructor(matrix, e, { cell, i, o }) {
         this.matrix = matrix;
+        this.i = i;
         this.o = o;
+        this.pointer = dragPointer(e, cell);
+        this.line = null;
         this.startX = e.clientX;
         this.startY = e.clientY;
         this.startLeft = matrix.scrollWrap.scrollLeft;
@@ -1239,11 +1251,12 @@ class RouteGesture {
         this.stopEnds = null;
     }
 
-    /** Follow the pointer, and end at the first end of a drag the window hears (press.js): let go routes, a cancel or a lost focus does not. */
+    /** Follow its own pointer, and end at the first of its own drag's ends the window hears (press.js): let go routes, a cancel or a lost focus does not. */
     listen() {
         document.addEventListener('pointermove', this.onMove);
-        this.stopEnds = endDragAtTheWindow((e, letGo) => this.finish(letGo ? e : null, !letGo));
-        this.matrix.el._matrixDragCleanup = () => this.finish(null, true);
+        this.stopEnds = endDragAtTheWindow(
+            (e, letGo) => this.finish(letGo ? e : null), (e) => this.pointer.owns(e));
+        this.matrix.el._matrixDragCleanup = () => this.finish(null);
     }
 
     /** The grid moved under the finger, so the gesture was a scroll wherever it ends. */
@@ -1253,7 +1266,8 @@ class RouteGesture {
     }
 
     move(me) {
-        if (this.scrolled()) { this.matrix.dropLine(); this.dragging = false; return; }
+        if (!this.pointer.owns(me)) return;
+        if (this.scrolled()) { this.dropLine(); this.dragging = false; return; }
         const dx = me.clientX - this.startX, dy = me.clientY - this.startY;
         if (!this.dragging && Math.hypot(dx, dy) < MATRIX_DRAG_THRESHOLD_PX) return;
         this.dragging = true;
@@ -1261,11 +1275,10 @@ class RouteGesture {
     }
 
     drawLine(me) {
-        const drag = this.matrix.drag;
-        if (!drag.line) {
-            drag.line = document.createElement('div');
-            drag.line.className = 'matrix-drag-line';
-            drag.line.style.cssText = `
+        if (!this.line) {
+            this.line = document.createElement('div');
+            this.line.className = 'matrix-drag-line';
+            this.line.style.cssText = `
                 position: fixed; pointer-events: none; z-index: 999;
                 height: 2px; width: 0;
                 background: ${this.matrix.activeColor};
@@ -1274,38 +1287,41 @@ class RouteGesture {
                 left: ${this.originX}px;
                 top: ${this.originY}px;
             `;
-            document.body.appendChild(drag.line);
+            document.body.appendChild(this.line);
         }
         const lx = me.clientX - this.originX, ly = me.clientY - this.originY;
-        drag.line.style.width = Math.hypot(lx, ly) + 'px';
-        drag.line.style.transform = `rotate(${Math.atan2(ly, lx) * 180 / Math.PI}deg)`;
+        this.line.style.width = Math.hypot(lx, ly) + 'px';
+        this.line.style.transform = `rotate(${Math.atan2(ly, lx) * 180 / Math.PI}deg)`;
     }
 
-    finish(ue, cancelled) {
+    dropLine() {
+        if (this.line) { this.line.remove(); this.line = null; }
+    }
+
+    /** End the gesture: let go by `ue`, or abandoned (null), routing nothing. */
+    finish(ue) {
         const matrix = this.matrix;
         document.removeEventListener('pointermove', this.onMove);
         this.stopEnds();
-        matrix.el._matrixDragCleanup = null;
-        matrix.dropLine();
-        const wasDragging = this.dragging;
-        // Row and column indices, not port numbers -- index 0 is a real
-        // source, so every guard below asks whether it is a number rather
-        // than whether it is truthy.
-        const srcIdx = matrix.drag.startInput;
-        this.dragging = false;
-        matrix.drag.startInput = null;
+        this.pointer.stop();
+        if (matrix.gesture === this) {
+            matrix.gesture = null;
+            matrix.el._matrixDragCleanup = null;
+        }
+        this.dropLine();
         // A cancelled pointer is the browser saying it took this gesture over
         // to scroll with; a moved scrollbar says the same thing after the fact.
-        // The window losing focus mid-gesture routes nothing either.
-        if (cancelled || this.scrolled()) return;
-        if (srcIdx === null) return;
-        matrix.routeCell(srcIdx, wasDragging ? releasedOver(ue) : this.o);
+        // The window losing focus mid-gesture routes nothing either, and nor
+        // does a lift with no point of the gesture's own: its touch lifted with
+        // no event of its own, so whether and where it let go is not known.
+        const point = ue && this.pointer.pointOf(ue);
+        if (!point || this.scrolled()) return;
+        matrix.routeCell(this.i, this.dragging ? releasedOver(point) : this.o);
     }
 }
 
-/** The destination row of the crosspoint a drag was released over, or null; a lifted touch says where in its changedTouches. */
-function releasedOver(ue) {
-    const point = ue.changedTouches ? ue.changedTouches[0] : ue;
+/** The destination row of the crosspoint under `point`, where a drag was let go, or null. */
+function releasedOver(point) {
     const cp = crosspointAt(document.elementFromPoint(point.clientX, point.clientY));
     if (!cp || cp.dataset.destIdx === undefined) return null;
     return parseInt(cp.dataset.destIdx);

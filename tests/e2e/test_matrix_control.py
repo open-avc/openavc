@@ -226,14 +226,20 @@ def test_a_gesture_the_browser_takes_for_a_pan_routes_nothing(panel_page) -> Non
 
     That is the signal, and it arrives before any scroll position has changed,
     so it has to be handled on its own rather than left to the scroll check.
+    The cancel names the pointer it cancels, as the browser's does: a gesture
+    follows only its own pointer.
     """
     _mount(panel_page, _matrix(input_count=16, output_count=16), 420, 300)
     box = _crosspoint(panel_page, 1, 1).bounding_box()
     cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+    panel_page.evaluate("""() => window.addEventListener('pointerdown',
+        (e) => { window.__pressedBy = e.pointerId; }, { once: true })""")
     panel_page.mouse.move(cx, cy)
     panel_page.mouse.down()
     panel_page.mouse.move(cx + 60, cy + 40, steps=6)
-    _crosspoint(panel_page, 1, 1).dispatch_event("pointercancel")
+    pressed_by = panel_page.evaluate("() => window.__pressedBy")
+    _crosspoint(panel_page, 1, 1).dispatch_event(
+        "pointercancel", {"pointerId": pressed_by, "isPrimary": True, "pointerType": "mouse"})
     panel_page.mouse.up()
     sent = _sent(panel_page)
     assert sent == [], f"a cancelled gesture routed: {json.dumps(sent)}"
@@ -255,6 +261,96 @@ def test_dragging_across_a_grid_that_fits_still_routes(panel_page) -> None:
     sent = _sent(panel_page)
     assert len(sent) == 1, f"a drag sent {len(sent)}: {json.dumps(sent)}"
     assert sent[0]["input"] == 1 and sent[0]["output"] == 3
+
+
+@pytest.fixture
+def touch_page(browser):
+    """The harness page on a touch screen, with its fingers driven through CDP."""
+    context = browser.new_context(viewport={"width": REF_W, "height": REF_H}, has_touch=True)
+    page = context.new_page()
+    serve_panel_scripts(page)
+    page.set_content(_page_html(), wait_until="load")
+    assert page.evaluate("() => !!window.__openavcPanel"), (
+        "panel.js did not initialise -- the harness page is wrong, not the matrix"
+    )
+    cdp = context.new_cdp_session(page)
+
+    def touch(kind, *points):
+        cdp.send("Input.dispatchTouchEvent", {"type": kind, "touchPoints": list(points)})
+
+    yield page, touch
+    context.close()
+
+
+def _finger(page, inp, out, touch_id):
+    """A finger's touch point on the middle of one crosspoint.
+
+    A touch lands where it is told, so the matrix is scrolled onto the screen
+    first, as a click would scroll its target.
+    """
+    page.locator("#box").scroll_into_view_if_needed()
+    box = _crosspoint(page, inp, out).bounding_box()
+    return {"x": box["x"] + box["width"] / 2, "y": box["y"] + box["height"] / 2, "id": touch_id}
+
+
+@pytest.mark.parametrize("second_lifts_first", [False, True],
+                         ids=["first-lifts-first", "second-lifts-first"])
+def test_two_still_fingers_send_the_first_fingers_route(touch_page, second_lifts_first) -> None:
+    """A matrix is routed one crosspoint at a time: the second finger is ignored.
+
+    Two fingers on two crosspoints sent one route that neither finger was on,
+    the second finger's source to the first finger's destination. The touch
+    screen lifts its points in the order of their numbers, so numbering the
+    second finger lower lifts it first.
+    """
+    page, touch = touch_page
+    _mount(page, _matrix(), 600, 400)
+    page.evaluate("""() => {
+        window.__lifted = [];
+        window.addEventListener('pointerup', (e) => window.__lifted.push(e.isPrimary ? 'first' : 'second'));
+    }""")
+    first = _finger(page, 1, 1, 1 if second_lifts_first else 0)
+    second = _finger(page, 3, 2, 0 if second_lifts_first else 1)
+    touch("touchStart", first)
+    touch("touchStart", first, second)
+    touch("touchEnd")
+    lifted = page.evaluate("() => window.__lifted")
+    assert lifted == (["second", "first"] if second_lifts_first else ["first", "second"]), (
+        f"the fingers lifted in the order {lifted}, so this proves nothing"
+    )
+    sent = _sent(page)
+    assert sent == [{"type": "ui.route", "element_id": "mx1", "input": 1, "output": 1}], (
+        f"two still fingers sent {json.dumps(sent)}"
+    )
+
+
+def test_a_palm_moving_beside_a_held_finger_draws_no_line(touch_page) -> None:
+    """The line a drag draws follows the finger that pressed, not a palm.
+
+    The browser may take a moving second touch for a pan and cancel both
+    pointers, so the line is watched for the whole gesture, not read at the end.
+    """
+    page, touch = touch_page
+    _mount(page, _matrix(), 600, 400)
+    page.evaluate("""() => {
+        window.__lines = 0;
+        new MutationObserver((records) => {
+            for (const r of records) for (const n of r.addedNodes)
+                if (n.classList && n.classList.contains('matrix-drag-line')) window.__lines += 1;
+        }).observe(document.body, { childList: true });
+    }""")
+    finger = _finger(page, 1, 1, 0)
+    palm = _finger(page, 4, 4, 1)
+    touch("touchStart", finger)
+    touch("touchStart", finger, palm)
+    for step in range(1, 6):
+        touch("touchMove", finger, {**palm, "x": palm["x"] + 12 * step, "y": palm["y"] + 8 * step})
+    touch("touchEnd")
+    assert page.evaluate("() => window.__lines") == 0, "a moving palm drew a drag line"
+    sent = _sent(page)
+    assert sent in ([], [{"type": "ui.route", "element_id": "mx1", "input": 1, "output": 1}]), (
+        f"a palm beside a held finger sent {json.dumps(sent)}"
+    )
 
 
 # ---------------------------------------------------------------------------
