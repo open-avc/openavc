@@ -20,12 +20,8 @@ from openavc.simulator.send_templates import (
     send_regex,
     spec_int_base,
 )
-from openavc.simulator.reply_templates import (
-    emit_literal,
-    emit_template,
-    emit_template_multi,
-    fill_template,
-)
+from openavc.simulator.reply_templates import fill_template
+from tests.reply_text_property import literal_of, template_multi_of, template_of
 
 
 # ── send_frame build / apply / split ──
@@ -197,32 +193,32 @@ def test_send_param_specs_and_spec_int_base():
 
 
 def test_emit_template_basic_and_anchors():
-    assert emit_template(r"In(\d+) All") == "In{value} All"
+    assert template_of(r"In(\d+) All") == "In{value} All"
     # Anchors and word boundaries never emit characters.
-    assert emit_template(r"^VOL(\d+)$") == "VOL{value}"
-    assert emit_template(r"LVL=(\d+)\b") == "LVL={value}"
+    assert template_of(r"^VOL(\d+)$") == "VOL{value}"
+    assert template_of(r"LVL=(\d+)\b") == "LVL={value}"
 
 
 def test_emit_template_escapes_and_classes():
     # Escaped punctuation emits the literal character.
-    assert emit_template(r"\(PWR!(-?\d+)\)") == "(PWR!{value})"
+    assert template_of(r"\(PWR!(-?\d+)\)") == "(PWR!{value})"
     # Shorthand classes and [...] classes emit one representative member;
     # quantifiers collapse to their minimum (one for +, none for * and ?).
     assert (
-        emit_template(r"TEMP:\s+[\d.]+\s+F \((\d+) C\)") == "TEMP: 0 F ({value} C)"
+        template_of(r"TEMP:\s+[\d.]+\s+F \((\d+) C\)") == "TEMP: 0 F ({value} C)"
     )
 
 
 def test_emit_template_groups_and_alternation():
     # Non-capturing and scoped-flag groups emit their first alternative.
     assert (
-        emit_template(r"(?:NOTIFY set|OK set) MTX:X 0 0 (\d+)")
+        template_of(r"(?:NOTIFY set|OK set) MTX:X 0 0 (\d+)")
         == "NOTIFY set MTX:X 0 0 {value}"
     )
-    assert emit_template(r"(?i:\*vol=(\d+)\b)") == "*vol={value}"
+    assert template_of(r"(?i:\*vol=(\d+)\b)") == "*vol={value}"
     # An optional group is dropped — unless it carries the target capture.
     assert (
-        emit_template(r"<Volume(?:\s[^>]*)?>(\d+)</Volume>")
+        template_of(r"<Volume(?:\s[^>]*)?>(\d+)</Volume>")
         == "<Volume>{value}</Volume>"
     )
 
@@ -231,43 +227,45 @@ def test_emit_template_targets_the_referenced_group():
     pattern = r"OK get (MTX:mem_\S+) 0 0 (-?\d+)"
     # $1 → the name field; $2 → the level field. A non-target group emits
     # representative content so the reply still matches the pattern.
-    assert emit_template(pattern, 1) == "OK get {value} 0 0 0"
-    assert emit_template(pattern, 2) == "OK get MTX:mem_0 0 0 {value}"
+    assert template_of(pattern, 1) == "OK get {value} 0 0 0"
+    assert template_of(pattern, 2) == "OK get MTX:mem_0 0 0 {value}"
     # A target inside an optional tail is kept, not dropped.
     assert (
-        emit_template(r'(\d+)(?: "([^"]*)")?', 2) == '0 "{value}"'
+        template_of(r'(\d+)(?: "([^"]*)")?', 2) == '0 "{value}"'
     )
 
 
 def test_emit_template_returns_none_when_unmodelable():
-    assert emit_template(r"NoGroupsHere") is None
-    assert emit_template(r"(\d+)", 2) is None  # target group doesn't exist
-    assert emit_template(r"(?=lookahead)(\d+)") is None
-    assert emit_template(r"(\w+) \1") is None  # backreference survives
-    assert emit_template(r"[^/]+ (\d+)") is None  # negated class survives
+    assert template_of(r"NoGroupsHere") is None
+    assert template_of(r"(\d+)", 2) is None  # target group doesn't exist
+    assert template_of(r"(?=lookahead)(\d+)") is None
+    assert template_of(r"(\w+) \1") is None  # backreference survives
+    assert template_of(r"[^/]+ (\d+)") is None  # negated class survives
     # ...but a negated class INSIDE the target group is fine — the group
     # becomes {value} and its content never needs a representative.
-    assert emit_template(r'val="([^"]*)"') == 'val="{value}"'
+    assert template_of(r'val="([^"]*)"') == 'val="{value}"'
 
 
 def test_emit_template_carries_a_fixed_digit_width():
     # A capture that is always N digits keeps N, so the reply pads the way
     # the device does; a variable-length one stays a bare slot.
-    assert emit_template(r"GAIN (\d{3})") == "GAIN {value:03d}"
-    assert emit_template(r"MINS ([0-9]{5})") == "MINS {value:05d}"
-    assert emit_template(r"CH (\d\d)") == "CH {value:02d}"
+    assert template_of(r"GAIN (\d{3})") == "GAIN {value:03d}"
+    assert template_of(r"MINS ([0-9]{5})") == "MINS {value:05d}"
+    assert template_of(r"CH (\d\d)") == "CH {value:02d}"
     # A rule that captures one literal value (a rate of 00000 meaning off)
     # still fixes the width of every value that reply carries.
-    assert emit_template(r"RATE (00000)") == "RATE {value:05d}"
-    assert emit_template(r"GAIN (\d+)") == "GAIN {value}"
-    assert emit_template(r"GAIN (\d{1,3})") == "GAIN {value}"
-    assert emit_template(r"GAIN (-?\d{3})") == "GAIN {value}"
+    assert template_of(r"RATE (00000)") == "RATE {value:05d}"
+    assert template_of(r"GAIN (\d+)") == "GAIN {value}"
+    assert template_of(r"GAIN (\d{1,3})") == "GAIN {value}"
+    assert template_of(r"GAIN (-?\d{3})") == "GAIN {value}"
     assert (
-        emit_template_multi(r"REP (\d{2}) GAIN (\d{3})", {1: "{child_id}", 2: "{value}"})
+        template_multi_of(r"REP (\d{2}) GAIN (\d{3})", {1: "{child_id}", 2: "{value}"})
         == "REP {child_id:02d} GAIN {value:03d}"
     )
-    # A literal token in place of the group is never given a width.
-    assert emit_template_multi(r"MUTE (\d{2})", {1: "1"}) == "MUTE 1"
+    # A literal token in place of the group is never given a width: one the
+    # group cannot capture as it stands gives no reply.
+    assert template_multi_of(r"MUTE (\d{2})", {1: "01"}) == "MUTE 01"
+    assert template_multi_of(r"MUTE (\d{2})", {1: "1"}) is None
 
 
 def test_fill_template_pads_whole_numbers_and_leaves_braces_alone():
@@ -281,15 +279,15 @@ def test_fill_template_pads_whole_numbers_and_leaves_braces_alone():
 
 
 def test_emit_literal_reconstructs_fixed_replies():
-    assert emit_literal(r"^Amt1$") == "Amt1"
-    assert emit_literal(r"(?i:\*pow=on\b)") == "*pow=on"
-    assert emit_literal(r"Bluetooth mute:\s*on") == "Bluetooth mute:on"
-    assert emit_literal(r"g_link 0000 \S+ NC 1") == "g_link 0000 0 NC 1"
+    assert literal_of(r"^Amt1$") == "Amt1"
+    assert literal_of(r"(?i:\*pow=on\b)") == "*pow=on"
+    assert literal_of(r"Bluetooth mute:\s*on") == "Bluetooth mute:on"
+    assert literal_of(r"g_link 0000 \S+ NC 1") == "g_link 0000 0 NC 1"
 
 
 def test_emit_literal_rejects_capture_groups():
     # A fixed literal can't represent a captured field.
-    assert emit_literal(r"~\d+@MUTE (\d+),0") is None
+    assert literal_of(r"~\d+@MUTE (\d+),0") is None
 
 
 # ── compile_driver (receive side) ──
@@ -486,37 +484,31 @@ def test_send_param_groups_ignores_absent_params():
 
 
 def test_emit_template_multi_substitutes_every_targeted_group():
-    from openavc.simulator.reply_templates import emit_template_multi
-
-    assert emit_template_multi(
+    assert template_multi_of(
         r"^Out(\d+) In(\d+) Vid$", {1: "{child_id}", 2: "{value}"}
     ) == "Out{child_id} In{value} Vid"
     # A literal at a targeted group pins one mapped wire token in place.
-    assert emit_template_multi(
+    assert template_multi_of(
         r"^ZM (\d+) (ON|OFF)$", {1: "{child_id}", 2: "ON"}
     ) == "ZM {child_id} ON"
     # Id slot only: the rest emits representative members.
-    assert emit_template_multi(
+    assert template_multi_of(
         r"^HdcpI(\d+)\*2$", {1: "{child_id}"}
     ) == "HdcpI{child_id}*2"
 
 
 def test_emit_template_multi_optional_target_survives_and_missing_fails():
-    from openavc.simulator.reply_templates import emit_template_multi
-
     # An optional atom carrying a target is kept, never dropped.
-    assert emit_template_multi(
+    assert template_multi_of(
         r"^A(\d+)(?: B(\d+))?$", {1: "{child_id}", 2: "{value}"}
     ) == "A{child_id} B{value}"
     # A targeted group the pattern does not have.
-    assert emit_template_multi(r"^A(\d+)$", {1: "{child_id}", 3: "{value}"}) is None
+    assert template_multi_of(r"^A(\d+)$", {1: "{child_id}", 3: "{value}"}) is None
 
 
 def test_emit_template_multi_single_group_matches_emit_template():
-    from openavc.simulator.reply_templates import emit_template, emit_template_multi
-
     for pattern in (r"In(\d+) All", r"^VOL([0-9A-F]{2})$", r"^Sig([01])\b"):
-        assert emit_template_multi(pattern, {1: "{value}"}) == emit_template(pattern)
+        assert template_multi_of(pattern, {1: "{value}"}) == template_of(pattern)
 
 
 def test_boolean_reads_a_zero_padded_flag_by_its_value():

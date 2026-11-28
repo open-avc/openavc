@@ -12,15 +12,25 @@ becomes a placeholder (``{value}``, ``{child_id}``) in place of its content. A
 zero-pad spec (``{value:03d}``), which ``fill_template`` renders.
 
 Anything the walk cannot model faithfully (a lookaround, a back-reference, a
-negated class that survives, a slot that must repeat) gives None, and the
-simulator then has no answer for that rule rather than one the driver's own regex
-would reject. Group numbering must stay exactly ``re``'s, so every branch of an
-alternation is parsed though only one is emitted. Only the simulator calls this.
-Standard library only.
+negated class that survives, a slot that must repeat, a possessive quantifier,
+the verbose flag) gives None, and the simulator then has no answer for that rule
+rather than one the driver's own regex would reject. Group numbering must stay
+exactly ``re``'s, so every branch of an alternation is parsed though only one is
+emitted. A slot is placed by where its group was emitted, never found again by
+its text, so a wire token the pattern's own text also writes stays one slot.
+
+Whatever the walk builds is then held to the pattern itself (``_reads_back``):
+filled with a sample (a ``{name}`` slot its group's own text, a wire token
+itself), the pattern must match it the way the driver searches a line, each
+slot group capturing exactly what went in. A reply that fails is None, so the
+walk can never hand the simulator text its own pattern rejects (an anchor
+mid-pattern, a word boundary between two letters, an earlier branch that takes
+the line). Only the simulator calls this. Standard library only.
 """
 
 from __future__ import annotations
 
+import itertools
 import re
 from typing import Any
 
@@ -30,37 +40,48 @@ class _Unsupported(Exception):
 
 
 _SHORTHAND_REPS = {"d": "0", "w": "0", "s": " ", "S": "0"}
-_ESCAPE_CHARS = {"r": "\r", "n": "\n", "t": "\t", "f": "\f", "v": "\v"}
+_ESCAPE_CHARS = {"a": "\a", "r": "\r", "n": "\n", "t": "\t", "f": "\f", "v": "\v"}
 #: What an escape outside a class emits: a shorthand's member, a control
 #: character, or nothing for a word boundary.
 _ESCAPE_EMITS = {**_SHORTHAND_REPS, **_ESCAPE_CHARS, "b": "", "B": ""}
+#: Inside a class, ``\b`` is a backspace and the anchors are no escape at all.
+_CLASS_ESCAPE_EMITS = {**_SHORTHAND_REPS, **_ESCAPE_CHARS, "b": "\b"}
+#: The escapes naming one character by its code: how many hex digits follow.
+_CODE_ESCAPES = {"x": 2, "u": 4, "U": 8}
 #: The fewest repeats each one-character quantifier allows.
 _SIMPLE_QUANTIFIERS = {"?": 0, "*": 0, "+": 1}
-#: A quantifier: one of those, or ``{n}`` / ``{n,}`` / ``{n,m}``; then ``?``
-#: when it is lazy. A ``{`` that starts none of them is a literal.
-_QUANTIFIER_RE = re.compile(r"(?:([?*+])|\{(\d+)(?:,\d*)?\})\??")
-_GLOBAL_FLAGS_RE = re.compile(r"\(\?[aiLmsux]+\)")
-_SCOPED_FLAGS_RE = re.compile(r"\(\?[aiLmsux]+:")
-_HEX_PAIR_RE = re.compile(r"[0-9a-fA-F]{2}")
+#: A quantifier: one of those, or ``{n}`` / ``{n,}`` / ``{n,m}`` / ``{,m}`` /
+#: ``{,}`` (no lower bound is zero); then ``?`` when it is lazy. A ``{`` that
+#: starts none of them is a literal, ``{}`` among them.
+_QUANTIFIER_RE = re.compile(r"(?:([?*+])|\{(?:(\d+)(?:,\d*)?|,\d*)\})\??")
+_GLOBAL_FLAGS_RE = re.compile(r"\(\?([aiLmsux]+)\)")
+_SCOPED_FLAGS_RE = re.compile(r"\(\?([aiLmsux]+):")
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+#: Where a slot is held while the walk runs: one private-use character per
+#: slot, which a pattern that writes one itself is refused for.
+_MARK_BASE = 0xE000
+_MARK_LAST = 0xF8FF
+#: What a ``{name}`` slot whose group has no text of its own (a negated
+#: class, ``\D``) is tried with, in order, when the walk checks its reply.
+_PROBES = ("0", "a", "A", " ")
+
+
+def _is_mark(ch: str) -> bool:
+    return _MARK_BASE <= ord(ch) <= _MARK_LAST
 
 
 def _class_emit(body: str) -> str | None:
     """One representative character for a [...] class body, or None.
 
-    The first member decides: a literal char, a range's start, a shorthand's
-    representative. A negated class has no safe representative.
+    The first member decides: a literal char, a range's start, an escape read
+    as it is outside a class (``_escape_emit``) but for ``\b``, a backspace
+    here. A negated class has no safe representative.
     """
     if not body or body.startswith("^"):
         return None
-    if body[0] == "\\" and len(body) > 1:
-        c = body[1]
-        if c in _SHORTHAND_REPS:
-            return _SHORTHAND_REPS[c]
-        if c in _ESCAPE_CHARS:
-            return _ESCAPE_CHARS[c]
-        if c in ("D", "W"):
-            return None
-        return c
+    if body[0] == "\\":
+        emitted, _ = _escape_emit(body, 0, _CLASS_ESCAPE_EMITS)
+        return emitted or None
     return body[0]
 
 
@@ -85,21 +106,39 @@ def _class_end(src: str, i: int) -> int:
     raise _Unsupported
 
 
-def _escape_emit(src: str, i: int) -> tuple[str | None, int]:
+def _escape_emit(
+    src: str, i: int, emits: dict[str, str] = _ESCAPE_EMITS
+) -> tuple[str | None, int]:
     """Emit the escape at ``src[i] == '\\'``: a shorthand's member, a control
-    character, nothing for a word boundary, the character ``\\xHH`` names, or
-    the escaped character itself. None for a back-reference, ``\\D`` and
-    ``\\W`` (no safe member) and the anchors ``\\A`` and ``\\Z``."""
+    character, nothing for a word boundary (``emits``: a class passes its
+    own, where ``\\b`` is a backspace), the character ``\\xHH``,
+    ``\\uHHHH`` or ``\\UHHHHHHHH`` names, or an escaped punctuation mark
+    itself. None for a back-reference or an octal code, ``\\D`` and ``\\W``
+    (no safe member), the anchors ``\\A`` and ``\\Z``, ``\\N{...}`` and
+    any other letter (which ``re`` refuses)."""
     if i + 1 >= len(src):
         raise _Unsupported
     e = src[i + 1]
-    if e in _ESCAPE_EMITS:
-        return _ESCAPE_EMITS[e], i + 2
-    if e == "x" and _HEX_PAIR_RE.match(src[i + 2 : i + 4]):
-        return chr(int(src[i + 2 : i + 4], 16)), i + 4
-    if e.isdigit() or e in "DWAZ":
+    if e in emits:
+        return emits[e], i + 2
+    if e in _CODE_ESCAPES:
+        return _code_escape(src, i + 2, _CODE_ESCAPES[e])
+    if e.isascii() and e.isalnum():
         return None, i + 2
     return e, i + 2  # escaped literal (punctuation)
+
+
+def _code_escape(src: str, start: int, digits: int) -> tuple[str | None, int]:
+    """The character a ``\\x`` / ``\\u`` / ``\\U`` escape names by the
+    ``digits`` hex digits from ``start``; None when they are not all there
+    (``re`` refuses it) or name no character a reply can carry."""
+    code = src[start : start + digits]
+    if len(code) < digits or not _HEX_DIGITS.issuperset(code):
+        return None, start
+    value = int(code, 16)
+    if value > 0x10FFFF or _is_mark(chr(value)):
+        return None, start + digits
+    return chr(value), start + digits
 
 
 def _group_opening(src: str, i: int) -> tuple[bool, int]:
@@ -119,7 +158,15 @@ def _group_opening(src: str, i: int) -> tuple[bool, int]:
     scoped = _SCOPED_FLAGS_RE.match(src, i)
     if not scoped:
         raise _Unsupported  # lookarounds, conditionals, (?P=...)
+    _refuse_verbose(scoped.group(1))
     return False, scoped.end()
+
+
+def _refuse_verbose(flags: str) -> None:
+    """The verbose flag makes whitespace and ``#`` comments insignificant,
+    which the walk does not model."""
+    if "x" in flags:
+        raise _Unsupported
 
 
 _DIGIT_RUN_RE = re.compile(r"(?:\\d|\[0-9\]|[0-9])(?:\{(\d+)\})?")
@@ -142,12 +189,16 @@ def _fixed_digit_width(body: str) -> int | None:
 
 def _parse_quantifier(src: str, i: int) -> tuple[int, int] | None:
     """Parse a quantifier at src[i]; return (min_repeats, next_i) or None.
-    More than 8 required repeats are refused."""
+    More than 8 required repeats are refused, and so is a possessive
+    quantifier (a ``+`` after it), which never gives back what it took."""
     m = _QUANTIFIER_RE.match(src, i)
     if not m:
         return None
-    n = _SIMPLE_QUANTIFIERS[m.group(1)] if m.group(1) else int(m.group(2))
-    if n > 8:
+    if m.group(1):
+        n = _SIMPLE_QUANTIFIERS[m.group(1)]
+    else:
+        n = int(m.group(2)) if m.group(2) else 0
+    if n > 8 or src.startswith("+", m.end()):
         raise _Unsupported
     return n, m.end()
 
@@ -164,35 +215,86 @@ class _PatternWalk:
     ``branches``, ``seq``, ``atom`` and ``group`` call one another, one level of
     the pattern's nesting at a time. Each returns its emission, None when that
     part cannot be represented, and the index after it, and raises
-    ``_Unsupported`` for a construct the walk refuses outright."""
+    ``_Unsupported`` for a construct the walk refuses outright.
+
+    While the walk runs, each slot is a mark of its own (``marks``), so which
+    piece carries a slot is known by where the slot went, never by searching
+    for its text; ``placed`` writes the placeholders in at the end. Each slot
+    group's own emission is kept (``samples``) for ``reads_back``."""
 
     def __init__(self, src: str, slots: dict[int, str]) -> None:
         self.src = src
         self.slots = dict(slots)
+        self.marks = {n: chr(_MARK_BASE + k) for k, n in enumerate(self.slots)}
         self.groups = 0
         self.found: set[int] = set()
         self.widths: dict[int, int] = {}
+        self.samples: dict[int, str | None] = {}
 
     def emission(self) -> str | None:
-        """The whole pattern's emission, or None when it cannot be modeled."""
+        """The whole pattern's emission, slots as their marks, or None when it
+        cannot be modeled or would not read back (``reads_back``)."""
+        if any(_is_mark(ch) for ch in self.src):
+            return None
         try:
             emission, i = self.branches(0, depth=0)
         except _Unsupported:
             return None
-        return emission if i == len(self.src) else None
+        if emission is None or i != len(self.src):
+            return None
+        if self.found != set(self.slots):
+            return None
+        if any(mark not in emission for mark in self.marks.values()):
+            return None
+        return emission if self.reads_back(emission) else None
 
     def carries_slot(self, piece: str) -> bool:
-        """True when a slot group's placeholder text survives in ``piece``."""
-        return any(ph in piece for ph in self.slots.values())
+        """True when a slot was emitted into ``piece``."""
+        return any(mark in piece for mark in self.marks.values())
 
-    def with_widths(self, emission: str) -> str:
-        """``emission`` with each ``{name}`` slot whose group is a fixed run of
-        digits written with that width as a zero-pad spec (``{value:03d}``)."""
-        for group, width in self.widths.items():
+    def placed(self, emission: str) -> str:
+        """``emission`` with each mark replaced by its slot's placeholder, a
+        ``{name}`` slot whose group is a fixed run of digits written with
+        that width as a zero-pad spec (``{value:03d}``)."""
+        for group, mark in self.marks.items():
             ph = self.slots[group]
-            if _SLOT_NAME_RE.fullmatch(ph):
-                emission = emission.replace(ph, f"{ph[:-1]}:0{width}d}}")
+            width = self.widths.get(group)
+            if width and _SLOT_NAME_RE.fullmatch(ph):
+                ph = f"{ph[:-1]}:0{width}d}}"
+            emission = emission.replace(mark, ph)
         return emission
+
+    def reads_back(self, emission: str) -> bool:
+        """True when the pattern, compiled as the driver compiles it, finds
+        ``emission`` with its slots filled (``_fills``) and each slot group
+        captures exactly what went in its slot. A pattern ``re`` refuses
+        reads nothing back."""
+        try:
+            rx = re.compile(self.src)
+        except re.error:
+            return False
+        for fill in self._fills():
+            line = emission
+            for group, text in fill.items():
+                line = line.replace(self.marks[group], text)
+            m = rx.search(line)
+            if m and all(m.group(group) == text for group, text in fill.items()):
+                return True
+        return False
+
+    def _fills(self) -> list[dict[int, str]]:
+        """What the slots are filled with to check a reply: a wire token is
+        its own text, a ``{name}`` slot its group's own emission, or each of
+        ``_PROBES`` when its group has none."""
+        choices = []
+        for group, ph in self.slots.items():
+            if not _SLOT_NAME_RE.fullmatch(ph):
+                choices.append((ph,))
+            elif self.samples.get(group) is not None:
+                choices.append((self.samples[group],))
+            else:
+                choices.append(_PROBES)
+        return [dict(zip(self.slots, combo)) for combo in itertools.product(*choices)]
 
     def branches(self, i: int, depth: int) -> tuple[str | None, int]:
         """Emit an alternation: all branches are parsed (group numbering must
@@ -265,6 +367,7 @@ class _PatternWalk:
         slot's placeholder when it is a slot group."""
         flags = _GLOBAL_FLAGS_RE.match(self.src, i)
         if flags:
+            _refuse_verbose(flags.group(1))
             return "", flags.end()  # global flags like (?i)
         capturing, start = _group_opening(self.src, i)
         number = 0
@@ -275,17 +378,18 @@ class _PatternWalk:
         if end >= len(self.src) or self.src[end] != ")":
             raise _Unsupported
         if capturing and number in self.slots:
-            return self._slot(number, self.src[start:end]), end + 1
+            return self._slot(number, self.src[start:end], emission), end + 1
         return emission, end + 1
 
-    def _slot(self, number: int, body: str) -> str:
-        """Slot group ``number``'s placeholder, recording that the walk reached
-        it and the width its body fixes."""
+    def _slot(self, number: int, body: str, emission: str | None) -> str:
+        """Slot group ``number``'s mark, recording that the walk reached it,
+        the width its body fixes and the body's own ``emission``."""
         self.found.add(number)
+        self.samples[number] = emission
         width = _fixed_digit_width(body)
         if width:
             self.widths[number] = width
-        return self.slots[number]
+        return self.marks[number]
 
 
 def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | None:
@@ -296,7 +400,8 @@ def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | Non
     needs the child id group AND the value group templated in one emission
     (``'Out(\\d+) In(\\d+) Vid'`` with ``{1: '{child_id}', 2: '{value}'}`` →
     ``'Out{child_id} In{value} Vid'``). Every targeted group must survive
-    into the final emission; returns None when the pattern can't be modeled.
+    into the final emission; returns None when the pattern can't be modeled
+    or the emission would not read back through it.
 
     A ``{name}`` placeholder whose group is a fixed run of digits carries the
     width as a zero-pad spec (``'Gain(\\d{3})'`` → ``'Gain{value:03d}'``);
@@ -304,11 +409,7 @@ def emit_template_multi(pattern: str, placeholders: dict[int, str]) -> str | Non
     """
     walk = _PatternWalk(pattern, placeholders)
     emission = walk.emission()
-    if emission is None or walk.found != set(placeholders):
-        return None
-    if any(ph not in emission for ph in placeholders.values()):
-        return None
-    return walk.with_widths(emission)
+    return None if emission is None else walk.placed(emission)
 
 
 _SLOT_NAME_RE = re.compile(r"\{\w+\}")
