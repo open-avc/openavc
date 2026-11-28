@@ -344,6 +344,18 @@ async def test_ui_navigate_binding_broadcasts_and_emits(engine):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("move", ["$back", "$dismiss"])
+async def test_a_binding_s_panel_move_broadcasts_and_raises_no_page_event(engine, move):
+    engine.broadcast_ws = AsyncMock()
+    engine.events = AsyncMock()
+
+    await engine.ui_events.execute_action({"action": "ui.navigate", "page": move}, {}, element=None)
+
+    engine.events.emit.assert_not_awaited()
+    engine.broadcast_ws.assert_awaited_once_with({"type": "ui.navigate", "page_id": move})
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("retired", ["navigate", "page"])
 async def test_the_retired_spellings_no_longer_navigate(engine, retired):
     """Guard against quietly re-aliasing them. A project carrying one of these

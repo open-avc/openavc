@@ -36,7 +36,7 @@ from openavc.api.ws_send import (
     press_failure as _press_failure,
     send_ws as _send_ws,
 )
-from openavc.core.event_bus import check_event_emit, event_visible
+from openavc.core.event_bus import check_event_emit, emit_page_move, event_visible
 from openavc.core.panel_devices import (
     CLOSE_CODE_NOT_APPROVED,
     CLOSE_REASON_NOT_APPROVED,
@@ -777,7 +777,7 @@ async def _handle_message(
         if not page_id:
             await _send_ws_error(ws, msg_type, "Missing page_id")
             return
-        await engine.events.emit(f"ui.page.{page_id}")
+        await emit_page_move(engine.events, page_id)
         # Confirm navigation to sender only — each panel manages its own page
         await _send_ws(ws, {"type": "ui.navigate", "page_id": page_id})
 

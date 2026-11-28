@@ -45,6 +45,7 @@ from fnmatch import fnmatch, fnmatchcase
 from typing import Any, Callable, NamedTuple
 
 from openavc.core.ws_hub import PANEL, PROGRAMMER, event_reach
+from openavc.ui.page_rules import is_navigation_word
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -258,6 +259,18 @@ def check_project_emit(event: Any) -> str | None:
         f"Event '{event}' is not sent: names starting with '{PLATFORM_EVENT_PREFIX}' are "
         f"OpenAVC's own. Name this event '{project_event_name(event)}'."
     )
+
+
+async def emit_page_move(bus: EventBus, target: str) -> None:
+    """Tell ``bus`` a panel is going to page ``target``: ``ui.page.<page_id>``.
+
+    The one emit every page move makes: a panel's ``ui.page``, a control's and
+    a macro's ``ui.navigate``, and the AI's simulated navigate. ``$back`` and
+    ``$dismiss`` (``ui/page_rules.py``) are the panel's own moves and name no
+    page, so they raise nothing; the move itself still goes to the panel.
+    """
+    if not is_navigation_word(target):
+        await bus.emit(f"ui.page.{target}")
 
 
 def silent_platform_pattern(pattern: Any) -> bool:

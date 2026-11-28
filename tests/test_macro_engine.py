@@ -336,7 +336,8 @@ def test_every_panel_move_is_announced_as_a_move_not_a_page(move):
     assert said and move not in said, said
 
 
-async def test_ui_navigate_back_does_not_emit_page_event(core):
+@pytest.mark.parametrize("move", ["$back", "$dismiss"])
+async def test_ui_navigate_back_does_not_emit_page_event(core, move):
     """$back / $dismiss are overlay-stack controls, not page targets — no ui.page.* emit."""
     state, events = core
     devices = DeviceManager(state, events)
@@ -355,11 +356,11 @@ async def test_ui_navigate_back_does_not_emit_page_event(core):
     engine.load_macros([{
         "id": "dismiss",
         "name": "Dismiss",
-        "steps": [{"action": "ui.navigate", "page": "$back"}],
+        "steps": [{"action": "ui.navigate", "page": move}],
     }])
     await engine.execute("dismiss")
 
-    broadcast.assert_awaited_once_with({"type": "ui.navigate", "page_id": "$back"})
+    broadcast.assert_awaited_once_with({"type": "ui.navigate", "page_id": move})
     assert received_events == []
 
 

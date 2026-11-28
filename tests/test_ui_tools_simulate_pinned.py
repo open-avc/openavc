@@ -170,6 +170,14 @@ async def test_a_navigate_emits_the_page_event_then_broadcasts(dry_run):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("move", ["$back", "$dismiss"])
+async def test_a_navigate_to_a_panel_move_broadcasts_and_raises_no_page_event(move):
+    result, rec, _ = await _simulate({"action": "navigate", "page_id": move})
+    assert result == {"success": True, "action": "navigate", "page_id": move, "state_changes": []}
+    assert rec.calls == [("broadcast_ws", {"type": "ui.navigate", "page_id": move})]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("action", ["press", "change", "teleport", ""])
 async def test_every_other_action_needs_an_element_first(action):
     result, rec, store = await _simulate({"action": action, "element_id": ""})

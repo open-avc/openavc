@@ -29,7 +29,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
 from openavc.core.condition_eval import CONDITIONAL, SKIP_IF, WAIT_UNTIL, condition_keys, judge
-from openavc.core.event_bus import check_project_emit
+from openavc.core.event_bus import check_project_emit, emit_page_move
 from openavc.core.group_command import reached_nobody
 from openavc.core.macro_text import StepFailed
 from openavc.core.project_loader import MacroStep, reads_as
@@ -463,11 +463,7 @@ class MacroSteps:
         if not page:
             raise ValueError(f"ui.navigate step requires a 'page' value (page id, '{BACK}', or '{DISMISS}')")
         log.debug(f"  Macro step: ui.navigate -> {page}")
-        # Emit ui.page.<page_id> for symmetry with element press-side
-        # navigation, but only for real page IDs — $back/$dismiss are
-        # overlay-stack controls, not page targets.
-        if page not in ("$back", "$dismiss"):
-            await self.events.emit(f"ui.page.{page}")
+        await emit_page_move(self.events, page)
         if self._broadcast_ws is not None:
             await self._broadcast_ws({"type": "ui.navigate", "page_id": page})
         else:

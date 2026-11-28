@@ -537,7 +537,7 @@ log.info(f"Cancelled {count} timers")
 | `ui.mute_route.<element_id>` | Output mute changed via matrix (payload includes `output`, `mute`) |
 | `ui.audio_mute_route.<element_id>` | Audio-breakaway output mute changed (payload includes `output`, `mute`) |
 | `ui.submit.<element_id>` | Text input or keypad submitted (payload includes `value`) |
-| `ui.page.<page_id>` | Page navigation (no payload) |
+| `ui.page.<page_id>` | A panel went to this page (no payload). Going back or closing an overlay (`$back`, `$dismiss`) visits no page and sends nothing |
 | `device.connected.<device_id>` | Device connected |
 | `device.disconnected.<device_id>` | Device disconnected — transport-level loss (socket dropped, serial port gone, poll watchdog tripped) |
 | `device.error.<device_id>` | Protocol/parse/command failure on an otherwise-live connection (payload includes `device_id`, `error`: the error's own text, or its type, such as `TimeoutError`, when it has no text; for a command, the device's password and secret parameters in it show as `***`). Distinct from `device.disconnected.<device_id>` — see note below |

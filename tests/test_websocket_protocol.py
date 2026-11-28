@@ -400,6 +400,20 @@ async def test_ui_page_sends_navigate_to_sender():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("move", ["$back", "$dismiss"])
+async def test_ui_page_to_a_panel_move_raises_no_page_event(move):
+    """$back and $dismiss are the panel's own moves and name no page: the
+    sender still gets its ui.navigate, and no ui.page event says a panel went
+    to a page called that."""
+    ws = FakeWS()
+    engine = _make_engine()
+    with patch("openavc.api._engine._engine", engine):
+        await _handle_message(ws, {"type": "ui.page", "page_id": move}, "panel")
+    engine.events.emit.assert_not_awaited()
+    assert any(m.get("type") == "ui.navigate" and m.get("page_id") == move for m in ws.sent)
+
+
+@pytest.mark.asyncio
 async def test_unknown_message_type_is_silent():
     """Unknown message types are logged but no error sent to client."""
     ws = FakeWS()

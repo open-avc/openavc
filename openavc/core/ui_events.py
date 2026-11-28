@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from openavc.core.condition_eval import match_key, same_value
 from openavc.core.device_manager import failed_command
-from openavc.core.event_bus import check_project_emit
+from openavc.core.event_bus import check_project_emit, emit_page_move
 from openavc.core.macro_text import no_such_macro
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.script_engine import ScriptCallError
@@ -500,7 +500,7 @@ class UIEventRuntime:
             page_id = action_def.get("page", "")
             if page_id:
                 if not dry_run:
-                    await engine.events.emit(f"ui.page.{page_id}")
+                    await emit_page_move(engine.events, page_id)
                     await engine.broadcast_ws({
                         "type": "ui.navigate",
                         "page_id": page_id,

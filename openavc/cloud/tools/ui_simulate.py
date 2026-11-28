@@ -22,6 +22,7 @@ from typing import Any
 
 from openavc.api.error_messages import describe_press_failure
 from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
+from openavc.core.event_bus import emit_page_move
 from openavc.core.ui_events import find_element, resolve_press
 from openavc.utils.logger import get_logger
 
@@ -84,8 +85,9 @@ async def simulate_ui_action(engine: Any, state: Any, input: dict) -> dict:
 
 async def _navigate(engine: Any, page_id: Any, dry_run: bool) -> dict:
     """Every connected panel moved to a page, the way the runtime moves them:
-    the page event emitted AND ``ui.navigate`` broadcast, since a panel
-    switches page only on the broadcast."""
+    the page event emitted (none for ``$back`` or ``$dismiss``, which name no
+    page) AND ``ui.navigate`` broadcast, since a panel switches page only on
+    the broadcast."""
     if not page_id:
         return {"error": "page_id is required for navigate action"}
     if dry_run:
@@ -94,7 +96,7 @@ async def _navigate(engine: Any, page_id: Any, dry_run: bool) -> dict:
             "dry_run": True, "state_changes": [],
             "note": f"Would move every connected panel to '{page_id}'.",
         }
-    await engine.events.emit(f"ui.page.{page_id}")
+    await emit_page_move(engine.events, page_id)
     await engine.broadcast_ws({"type": "ui.navigate", "page_id": page_id})
     return {"success": True, "action": "navigate", "page_id": page_id, "state_changes": []}
 
