@@ -38,11 +38,12 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from operator import itemgetter
 from types import SimpleNamespace
 from typing import Any
 
 from openavc.core.project_update import MigrationNotes
-from openavc.ui.page_geometry import absolute_placements
+from openavc.ui.page_geometry import absolute_placements, first_by_id
 from openavc.ui.page_structure import CONTAINER_TYPE
 
 #: The sides of a box, and what one left out reads as (``project_loader.Placement``).
@@ -110,10 +111,7 @@ class _Page:
 
     def _by_id(self) -> dict[str, dict]:
         """Each id's control: the first holding it, as a press finds one."""
-        by_id: dict[str, dict] = {}
-        for el in self.elements:
-            by_id.setdefault(el["id"], el)
-        return by_id
+        return first_by_id(self.elements, itemgetter("id"))
 
     def _said(self, element_id: str, message: str) -> None:
         page_id = str(self.page.get("id", ""))
@@ -353,11 +351,8 @@ def _geometry_view(page: dict, elements: list[dict]) -> SimpleNamespace:
 def _first_of_each_id(layouts: list[dict]) -> list[dict]:
     """Each arrangement with text for an id, the first of an id the panel
     draws; one after it with the same id is drawn from it."""
-    first: dict[str, dict] = {}
-    for layout in layouts:
-        if _text(layout.get("id")):
-            first.setdefault(layout["id"], layout)
-    return list(first.values())
+    named = [layout for layout in layouts if _text(layout.get("id"))]
+    return list(first_by_id(named, itemgetter("id")).values())
 
 
 def _box(box: dict) -> SimpleNamespace:

@@ -16,14 +16,33 @@ The panel runtime's ``selectLayout`` (``web/panel/modules/layout.js``) and the
 Builder's ``layoutChain`` / ``absolutePlacements`` are the other two
 implementations of this arithmetic; ``tests/test_panel_layout_mirror.py``
 holds the panel's to this one.
+
+THE rule for which copy of a repeated id a reader takes (``first_by_id``): the
+first, the one a press reaches (``core/ui_events.find_element``) and the panel
+draws. A project can still hold two controls, or two arrangements, under one
+id (Validate reports it), and every server reader of one asks this; the
+Builder's is ``firstById`` in ``pageGeometry.ts``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from typing import Any
 
 # The whole page, as a box. What a page-level element's percentages are of.
 PAGE_BOX = {"x": 0.0, "y": 0.0, "w": 100.0, "h": 100.0}
+
+
+def _own_id(item: Any) -> Any:
+    return item.id
+
+
+def first_by_id(items: Iterable[Any], id_of: Callable[[Any], Any] = _own_id) -> dict:
+    """Each id with the first item holding it, in the order the ids are first met."""
+    found: dict = {}
+    for item in items:
+        found.setdefault(id_of(item), item)
+    return found
 
 
 def primary_layout(page: Any) -> Any:
@@ -45,7 +64,7 @@ def layout_chain(page: Any, layout_id: str) -> list:
     whatever it inherits. The seen-set is a cycle guard: a hand-edited project
     can point two layouts at each other and every reader still has to answer.
     """
-    by_id = {lay.id: lay for lay in page.layouts}
+    by_id = first_by_id(page.layouts)
     chain: list = []
     seen: set[str] = set()
     cursor = by_id.get(layout_id)
@@ -73,7 +92,7 @@ def absolute_placements(page: Any, layout_id: str) -> dict:
     converts back on the way out.
     """
     placements = resolved_placements(page, layout_id)
-    by_id = {el.id: el for el in page.elements}
+    by_id = first_by_id(page.elements)
     out: dict = {}
 
     def resolve(el_id: str, seen: frozenset) -> dict | None:

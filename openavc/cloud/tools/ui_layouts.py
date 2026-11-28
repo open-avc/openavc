@@ -26,6 +26,7 @@ from openavc.cloud.tools import ToolEditError, merge_forward_compat
 from openavc.ui.page_geometry import (
     PAGE_BOX,
     absolute_placements,
+    first_by_id,
     layout_chain,
     primary_layout,
     resolved_placements,
@@ -150,7 +151,7 @@ class _LayoutEdit:
 
     def __init__(self, page: Any) -> None:
         self.page = page
-        self.by_id = {lay.id: lay for lay in page.layouts}
+        self.by_id = first_by_id(page.layouts)
         self.primary_id = primary_layout(page).id
 
     def apply(self, entry: Any) -> None:
@@ -244,13 +245,14 @@ def reparent_element(page: Any, element_id: str, new_parent_id: str | None) -> N
     conversion the Builder does when you drag a control into a container.
     Nothing moves when the parent is already the one named.
     """
-    element = {el.id: el for el in page.elements}.get(element_id)
+    holders = first_by_id(page.elements)
+    element = holders.get(element_id)
     if element is None:
         return
     if (element.parent or None) == new_parent_id:
         return
     _refuse(parent_issue(
-        element_id, new_parent_id, {el.id: el for el in page.elements}, page.id,
+        element_id, new_parent_id, holders, page.id,
     ))
 
     rewritten = [
@@ -389,7 +391,7 @@ def remove_elements(page: Any, ids: set) -> set:
 
 def _rehome_children(page: Any, doomed: set) -> None:
     """Each surviving child of a doomed container, moved to the nearest survivor."""
-    by_id = {el.id: el for el in page.elements}
+    by_id = first_by_id(page.elements)
     for el in page.elements:
         if el.id in doomed or not el.parent:
             continue

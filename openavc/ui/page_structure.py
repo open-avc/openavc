@@ -90,6 +90,7 @@ from functools import cache
 from typing import Any
 
 from openavc.core.condition_eval import canonical_operator
+from openavc.ui.page_geometry import first_by_id
 from openavc.ui.page_rules import NAVIGATION_PREFIX, NAVIGATION_WORDS, names_no_page
 
 ELEMENT_ID_TAKEN = "element_id_taken"
@@ -328,7 +329,7 @@ def inherits_loops(layouts: Sequence[Any]) -> list[Issue]:
     member in page order. The renderers cycle-guard, so nothing crashes, but
     the arrangements on a loop stop inheriting. One that inherits itself is
     :func:`inherits_issue`'s."""
-    by_id = {_id(layout): layout for layout in layouts}
+    by_id = first_by_id(layouts, _id)
     order = {layout_id: position for position, layout_id in enumerate(by_id)}
     found: set[frozenset] = set()
     issues: list[Issue] = []
@@ -442,7 +443,7 @@ def parent_issues(page: Any) -> list[Issue]:
     """Every control of one page whose container is not one it may sit in."""
     page_id = _id(page)
     elements = _listed(page, "elements")
-    holders = {_id(element): element for element in elements}
+    holders = first_by_id(elements, _id)
     found = (
         parent_issue(_id(element), _id(element, "parent"), holders, page_id)
         for element in elements

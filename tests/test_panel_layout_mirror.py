@@ -20,8 +20,6 @@ Left out of the corpus, because the two sides answer differently today:
 - a master's box stored as null: the panel takes the first stored value, the
   review the first that is set (`_stored_master_box` says so; the project
   model refuses a null box);
-- two layouts sharing an id: the panel follows the first, the fold here the
-  last (the project model refuses a duplicate);
 - a coordinate that is not a number: the panel draws the default, the review
   drops the box.
 """
@@ -67,6 +65,13 @@ PAGES = [
         {"id": "p", "primary": True, "orientation": "landscape", "inherits": "q", "hidden": ["x"],
          "placements": {"e1": _BOX}},
         {"id": "q", "orientation": "portrait", "inherits": "p", "hidden": ["y"], "placements": {"e2": _BOX}},
+    ]},
+    # Two arrangements under one id, the one an inherits names: both folds
+    # follow the first, the copy every reader takes.
+    {"layouts": [
+        {"id": "base", "primary": True, "orientation": "landscape", "placements": {"e1": _BOX}},
+        {"id": "base", "orientation": "square", "placements": {"e1": {"x": 4, "y": 4, "w": 4, "h": 4}}},
+        {"id": "top", "orientation": "portrait", "inherits": "base", "placements": {"e2": _BOX}},
     ]},
     # Inheriting from nothing, and no layout for the portrait screen.
     {"layouts": [{"id": "only", "primary": True, "orientation": "landscape", "inherits": "gone",

@@ -298,6 +298,22 @@ def test_a_loop_is_reported_once_however_many_arrangements_feed_it():
     assert [(i.code, i.layout) for i in ps.inherits_loops(layouts)] == [(ps.INHERITS_LOOP, "b")]
 
 
+def test_a_container_named_by_a_repeated_id_is_judged_as_its_first_copy():
+    """The panel draws the first copy of an id, and a child inside it."""
+    page = {"id": "main", "elements": [
+        {"id": "g", "type": "group"}, {"id": "g", "type": "button"}, {"id": "kid", "type": "button", "parent": "g"},
+    ]}
+    assert ps.parent_issues(page) == []
+    page["elements"][:2] = page["elements"][1::-1]
+    assert [i.code for i in ps.parent_issues(page)] == [ps.PARENT_NOT_CONTAINER]
+
+
+def test_a_loop_through_a_repeated_arrangement_follows_its_first_copy():
+    layouts = [{"id": "a", "inherits": "b"}, {"id": "b", "inherits": "a"}, {"id": "b"}]
+    assert [(i.code, i.layout) for i in ps.inherits_loops(layouts)] == [(ps.INHERITS_LOOP, "a")]
+    assert ps.inherits_loops([{"id": "a", "inherits": "b"}, {"id": "b"}, {"id": "b", "inherits": "a"}]) == []
+
+
 def test_a_new_control_is_told_which_copy_a_press_reaches():
     holders = ps.element_id_holders(
         [{"id": "p1", "elements": [{"id": "x"}]}, {"id": "p2", "elements": [{"id": "x"}]}],

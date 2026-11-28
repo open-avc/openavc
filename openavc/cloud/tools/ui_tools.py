@@ -22,6 +22,7 @@ from openavc.cloud.tools.ui_rewrites import scrub_page_references
 from openavc.cloud.tools.ui_simulate import simulate_ui_action
 from openavc.cloud.tools.ui_review import UIReview, WriteNotes, master_findings
 from openavc.ui.matrix_model import matrix_config_problems
+from openavc.ui.page_geometry import first_by_id
 from openavc.ui.page_structure import (
     element_id_holders,
     element_id_issue,
@@ -562,7 +563,7 @@ class _NewControls(_NewElements):
     def __init__(self, project: Any, page: Any) -> None:
         super().__init__(project)
         self.page = page
-        self.holders = {el.id: el for el in page.elements}
+        self.holders = first_by_id(page.elements)
         self.accepted: list[tuple[Any, dict | None]] = []
 
     def accept(self, elements: list) -> None:
