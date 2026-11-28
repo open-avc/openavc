@@ -147,8 +147,9 @@ def test_devices_sharing_a_port_record_it_once():
     }]
 
 
-async def test_the_recorded_port_is_the_one_the_listener_binds():
-    """One function resolves the port for both: they cannot disagree."""
+async def _listening_on_a_port_just_free() -> tuple:
+    """A driver started on a port that was free a moment ago, and the port
+    the record names for it."""
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
         free = probe.getsockname()[1]
@@ -161,11 +162,25 @@ async def test_the_recorded_port_is_the_one_the_listener_binds():
     state.set_event_bus(events)
     driver = DIALBACK("cam1", resolved["config"], state, events)
     await driver._start_push()
+    return driver, entry
+
+
+async def test_the_recorded_port_is_the_one_the_listener_binds():
+    """One function resolves the port for both: they cannot disagree.
+
+    The port is one the system had free when the test asked; a test running
+    beside it can take it before the listener binds, so a port taken by then
+    is tried again with another."""
+    for _ in range(5):
+        driver, entry = await _listening_on_a_port_just_free()
+        if driver._push_subscription is not None:
+            break
     try:
         assert driver._push_subscription is not None
         assert (driver._push_subscription.port, "tcp") == (entry["port"], entry["protocol"])
     finally:
-        driver._push_subscription.close()
+        if driver._push_subscription is not None:
+            driver._push_subscription.close()
 
 
 # --- the file ---
