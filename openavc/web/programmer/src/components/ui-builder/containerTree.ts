@@ -24,6 +24,7 @@ import {
   absolutePlacements,
   containerBox,
   containersAbove,
+  firstById,
   parentSpace,
   primaryLayout,
   roundPlacement,
@@ -369,7 +370,7 @@ export function outlineDropParent(
  */
 export function topmostSelection(page: UIPage, elementIds: string[]): string[] {
   const selected = new Set(elementIds);
-  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const byId = firstById(page.elements);
   return elementIds.filter((id) => !containersAbove(id, byId).some((c) => selected.has(c)));
 }
 

@@ -13,6 +13,7 @@ import {
   DEFAULT_PLACEMENT,
   GEOMETRY_PRECISION,
   absolutePlacements,
+  firstById,
   getPlacement,
   masterPlacement,
   masterPlacementsFromPage,
@@ -181,6 +182,7 @@ export function storeStyleValue(key: string, value: unknown): unknown {
 // --- Where a control is drawn: the boxes a page stores, and page space ---
 
 export {
+  firstById,
   roundPct,
   roundPlacement,
   pageSnap,
@@ -776,7 +778,7 @@ export {
  * from the geometry the answer is measured against.
  */
 function movableIds(page: UIPage, elementIds: Iterable<string>): Set<string> {
-  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const byId = firstById(page.elements);
   const ids = new Set<string>();
   for (const id of elementIds) if (!byId.get(id)?.locked) ids.add(id);
   return ids;

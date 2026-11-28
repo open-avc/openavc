@@ -22,6 +22,10 @@
  * value, `OnScreen` (`PageSelection` adds the controls selected on it), which
  * the page model's tools and a move's commit take.
  *
+ * Which copy of a repeated id counts is `firstById`: a hand-edited or imported
+ * project can still hold two controls under one id, and every reader here
+ * takes the first.
+ *
  * A leaf: the container tree, the arranging tools and the page review import
  * it (the canvas, the toolbar and the properties panel read it through the
  * helpers file's re-exports), and it imports only the project's types and the
@@ -54,6 +58,22 @@ export function roundPct(value: number): number {
 /** Round a whole box in one go. */
 export function roundPlacement(p: Placement): Placement {
   return { x: roundPct(p.x), y: roundPct(p.y), w: roundPct(p.w), h: roundPct(p.h) };
+}
+
+/**
+ * Each id with the first item holding it, in the order the ids are first met.
+ *
+ * THE Builder rule for which copy of a repeated id a reader takes: the first,
+ * the one a press reaches (`find_element` in openavc/core/ui_events.py) and
+ * the panel draws. Validate reports a repeated id rather than refusing it, so
+ * a project can still hold one; every reader that looks a control up by id
+ * asks this, as the server's readers ask `first_by_id` in
+ * openavc/ui/page_geometry.py.
+ */
+export function firstById<T extends { id: string }>(items: readonly T[]): Map<string, T> {
+  const found = new Map<string, T>();
+  for (const item of items) if (!found.has(item.id)) found.set(item.id, item);
+  return found;
 }
 
 /** The snap increment a page falls back to: the old 12x8 grid's spacing. */
@@ -185,7 +205,7 @@ export function withPlacements(
   return {
     ...page,
     layouts: (page.layouts ?? []).map((l) =>
-      l.id === target.id ? { ...l, placements: { ...l.placements, ...rounded } } : l,
+      l === target ? { ...l, placements: { ...l.placements, ...rounded } } : l,
     ),
   };
 }
@@ -326,7 +346,7 @@ export function withHidden(
   return {
     ...page,
     layouts: (page.layouts ?? []).map((l) => {
-      if (l.id !== target.id) return l;
+      if (l !== target) return l;
       const current = l.hidden ?? [];
       const has = current.includes(elementId);
       if (hidden === has) return l;
@@ -450,7 +470,7 @@ function pageSpaceRead(
   layoutId?: string | null,
 ): { boxes: Record<string, Placement>; measuredIn: Record<string, string | null> } {
   const placements = resolvePlacements(page, layoutId);
-  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const byId = firstById(page.elements);
   const boxes: Record<string, Placement> = {};
   const measuredIn: Record<string, string | null> = {};
 

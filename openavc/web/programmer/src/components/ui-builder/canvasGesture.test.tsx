@@ -278,6 +278,21 @@ describe("moving a page control", () => {
     expect(stored("k")).toEqual({ x: 10, y: 10, w: 20, h: 20 });
   });
 
+  it("moves the container when a control whose first copy it holds is grabbed with it selected", () => {
+    load(
+      makePage([el("g", { type: "group" }), el("k", { parent: "g" }), el("k")], {
+        g: { x: 10, y: 10, w: 50, h: 50 },
+        k: { x: 10, y: 10, w: 20, h: 20 },
+      }),
+      { selected: ["g", "k"] },
+    );
+    press(node("k"));
+    drag(103, 0);
+    release();
+    expect(stored("g")).toEqual({ x: 20.3, y: 10, w: 50, h: 50 });
+    expect(stored("k")).toEqual({ x: 10, y: 10, w: 20, h: 20 });
+  });
+
   it("moves a control inside a container in the container's own percentages, and it stays there", () => {
     FRAMES = { g: { width: 500, height: 250 } };
     load(

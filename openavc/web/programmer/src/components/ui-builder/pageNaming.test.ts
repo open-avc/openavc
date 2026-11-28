@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addLayout, addPage, removeLayout } from "./uiBuilderHelpers";
+import { addLayout, addPage, removeLayout, withHidden, withPlacement } from "./uiBuilderHelpers";
 import type { UIPage } from "../../api/types";
 
 // What a new page and a new arrangement are called, and what they start as.
@@ -84,11 +84,12 @@ describe("addLayout", () => {
   });
 });
 
+const layout = (id: string, inherits: string | null, primary = false) =>
+  ({ id, orientation: "portrait", primary, inherits, placements: {}, hidden: [] });
+const withLayouts = (...layouts: object[]) =>
+  ({ id: "pg", name: "Page", elements: [], layouts }) as unknown as UIPage;
+
 describe("removeLayout", () => {
-  const layout = (id: string, inherits: string | null, primary = false) =>
-    ({ id, orientation: "portrait", primary, inherits, placements: {}, hidden: [] });
-  const withLayouts = (...layouts: object[]) =>
-    ({ id: "pg", name: "Page", elements: [], layouts }) as unknown as UIPage;
 
   it("has what inherited the removed arrangement inherit what it inherited", () => {
     const out = removeLayout(withLayouts(layout("main", null, true), layout("a", "b"), layout("b", "main")), "b");
@@ -103,5 +104,14 @@ describe("removeLayout", () => {
   it("has a primary that inherited the removed arrangement, which inherited it, inherit nothing", () => {
     const out = removeLayout(withLayouts(layout("main", "b", true), layout("b", "main")), "b");
     expect(out.layouts.map((l) => [l.id, l.inherits])).toEqual([["main", null]]);
+  });
+});
+
+describe("an arrangement's writes, on two that share an id", () => {
+  it("writes a box or a hide into the first, the one the Builder reads", () => {
+    const p = withLayouts(layout("main", null, true), layout("tall", "main"), layout("tall", "main"));
+    const box = { x: 1, y: 2, w: 3, h: 4 };
+    const placed = withHidden(withPlacement(p, "a", box, "tall"), "a", true, "tall");
+    expect(placed.layouts.map((l) => [l.placements, l.hidden])).toEqual([[{}, []], [{ a: box }, ["a"]], [{}, []]]);
   });
 });

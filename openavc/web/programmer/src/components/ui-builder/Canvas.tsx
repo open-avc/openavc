@@ -16,6 +16,7 @@ import {
   sameBox,
   containerOf,
   containersAbove,
+  firstById,
   getPlacement,
   roundPlacement,
   topmostSelection,
@@ -618,7 +619,7 @@ export function Canvas({
       // Whichever box actually moves drives the gesture. Grab a child while
       // its container is also selected and the container is what travels, so
       // the container is what the snapping and the guides are measured on.
-      const byId = new Map(page.elements.map((el) => [el.id, el]));
+      const byId = firstById(page.elements);
       const anchorId = moving.includes(elementId)
         ? elementId
         : (containersAbove(elementId, byId).find((id) => moving.includes(id)) ?? null);
@@ -642,11 +643,12 @@ export function Canvas({
       const element = page.elements.find((el) => el.id === anchorId);
       const lock = aspectLockOf(element);
 
-      // Siblings in the same container, as the canvas draws them, are what
-      // edges snap to — a box in another is not a line this one should stick to.
+      // Siblings in the same container, as the canvas draws them (each id
+      // once, as its first copy), are what edges snap to — a box in another
+      // is not a line this one should stick to.
       const movingSet = new Set(moving);
       const parentId = containerOf(element, byId);
-      const siblings = page.elements
+      const siblings = [...byId.values()]
         .filter((el) => containerOf(el, byId) === parentId && !movingSet.has(el.id))
         .map((el) => placements[el.id])
         .filter((p): p is Placement => !!p);

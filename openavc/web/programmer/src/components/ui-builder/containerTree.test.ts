@@ -114,14 +114,36 @@ describe("an element's container: a parent that names another element on the pag
   });
 });
 
-describe("two controls sharing an id, written back", () => {
-  it("measures the write-back against the container the read measured it in", () => {
-    const p = page(
-      [el("g", "group"), el("a", "button", "g"), el("a")],
-      [primary({ g: box(0, 0, 50, 50), a: box(10, 10, 10, 10) })],
+describe("two controls sharing an id: the first copy, the one a press reaches and the panel draws", () => {
+  const shared = () =>
+    page(
+      [el("g", "group"), el("a", "button", "g"), el("a"), el("b")],
+      [primary({ g: box(50, 50, 50, 50), a: box(10, 10, 10, 10), b: box(20, 70, 10, 10) })],
     );
-    const [out] = alignElements([p], { pageId: "pg", elementIds: ["a"], layoutId: null }, "align-left");
-    expect(out.layouts[0].placements.a).toEqual(box(10, 10, 10, 10));
+
+  it("reads it in the container of its first copy", () => {
+    expect(absolutePlacements(shared()).a).toEqual(box(55, 55, 5, 5));
+  });
+
+  it("writes it back in that container", () => {
+    const [out] = alignElements([shared()], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "align-left");
+    expect(out.layouts[0].placements.a).toEqual(box(-60, 10, 10, 10));
+    expect(out.layouts[0].placements.b).toEqual(box(20, 70, 10, 10));
+  });
+
+  it("is carried by its first copy's container when both are selected", () => {
+    expect(topmostSelection(shared(), ["g", "a"])).toEqual(["g"]);
+  });
+
+  it("is measured in its first copy's container for a real-world ratio", () => {
+    expect(referenceParentBox(shared(), "a")).toEqual({ width: 640, height: 400 });
+  });
+
+  it("is moved by an align when only a later copy is locked", () => {
+    const p = shared();
+    p.elements[2] = { ...p.elements[2], locked: true } as UIElement;
+    const [out] = alignElements([p], { pageId: "pg", elementIds: ["a", "b"], layoutId: null }, "align-left");
+    expect(out.layouts[0].placements.a).toEqual(box(-60, 10, 10, 10));
   });
 });
 

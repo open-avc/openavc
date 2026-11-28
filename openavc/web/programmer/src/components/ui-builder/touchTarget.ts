@@ -14,7 +14,7 @@
  */
 
 import type { Placement, UIPage } from "../../api/types";
-import { containersAbove, layoutOrientation, resolvePlacements } from "./pageGeometry";
+import { containersAbove, firstById, layoutOrientation, resolvePlacements } from "./pageGeometry";
 
 /** The reference glass every warning is estimated against.
  *
@@ -117,7 +117,7 @@ export function referenceParentBox(
   layoutId?: string | null,
 ): { width: number; height: number } {
   const placements = resolvePlacements(page, layoutId);
-  const byId = new Map(page.elements.map((e) => [e.id, e]));
+  const byId = firstById(page.elements);
   const ref = referenceBox(layoutOrientation(page, layoutId));
   let width = ref.width;
   let height = ref.height;

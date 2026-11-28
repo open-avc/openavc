@@ -7,7 +7,7 @@ import {
   Star, Layers, Code,
 } from "lucide-react";
 import type { UIPage, UIElement, MasterElement } from "../../api/types";
-import { outlineDropParent } from "./uiBuilderHelpers";
+import { firstById, outlineDropParent } from "./uiBuilderHelpers";
 import { outlineRows } from "./outlineRows";
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -105,7 +105,7 @@ export function OutlinePanel({
   );
 
   const elementById = useMemo(
-    () => new Map(elements.map((el) => [el.id, el])),
+    () => firstById(elements),
     [elements],
   );
 
