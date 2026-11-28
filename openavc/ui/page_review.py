@@ -80,6 +80,7 @@ from openavc.ui.matrix_model import (
 from openavc.ui.page_geometry import (
     PAGE_BOX,
     absolute_placements,
+    first_by_id,
     layout_chain,
     primary_layout,
     resolved_placements,
@@ -2794,7 +2795,7 @@ def review_page(
     """
     findings: list[Finding] = []
     adjustments: list[Adjustment] = []
-    elements = {el.id: el for el in page.elements}
+    elements = first_by_id(page.elements)
     dumps = {el_id: dict(_mapping(el)) for el_id, el in elements.items()}
     in_scope = (lambda el_id: True) if touched is None else (lambda el_id: el_id in touched)
 
@@ -2863,7 +2864,7 @@ class _Arrangement:
             hidden |= set(getattr(ancestor, "hidden", None) or ())
         return cls(
             page=page,
-            elements={el.id: el for el in page.elements},
+            elements=first_by_id(page.elements),
             absolute=absolute_placements(page, layout.id),
             own=resolved_placements(page, layout.id),
             hidden=frozenset(hidden),

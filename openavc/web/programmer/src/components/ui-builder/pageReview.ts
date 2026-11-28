@@ -36,6 +36,7 @@ import {
   absolutePlacements,
   containerOf,
   containersAbove,
+  firstById,
   layoutById,
   primaryLayout,
   resolveHidden,
@@ -138,7 +139,7 @@ export function reviewPage(page: UIPage, options: ReviewOptions = {}): ReviewFin
   if (custom.length && custom[0].kind === "custom_page_elements_not_drawn") return custom;
   findings.push(...custom);
 
-  for (const el of page.elements) {
+  for (const el of firstById(page.elements).values()) {
     if (inScope(el.id)) findings.push(...elementFindings(el));
   }
 
@@ -186,7 +187,7 @@ function resolveArrangement(page: UIPage, layout: Layout, primaryId: string | un
   const orientation = layout.orientation ?? "landscape";
   return {
     page,
-    byId: new Map(page.elements.map((e) => [e.id, e])),
+    byId: firstById(page.elements),
     absolute: absolutePlacements(page, layout.id),
     ownBoxes: resolvePlacements(page, layout.id),
     hidden: resolveHidden(page, layout.id),
@@ -271,7 +272,7 @@ function layoutFindings(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
 
 function boxFindingsIn(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
   const findings: ReviewFinding[] = [];
-  for (const el of arr.page.elements) {
+  for (const el of arr.byId.values()) {
     if (!scope.inScope(el.id) || arr.hidden.has(el.id)) continue;
     if (own(arr.absolute, el.id)) {
       findings.push(...placedBoxFindings(arr, el, scope.theme));
@@ -323,9 +324,9 @@ function placedBoxFindings(
  * collapses.
  */
 function siblingOverlaps(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
-  const types = new Map(arr.page.elements.map((e) => [e.id, e.type]));
+  const types = new Map([...arr.byId.values()].map((e) => [e.id, e.type]));
   const byParent = new Map<string | null, string[]>();
-  for (const el of arr.page.elements) {
+  for (const el of arr.byId.values()) {
     if (!isDrawn(arr, el.id)) continue;
     const parent = parentIn(arr, el.id);
     const kids = byParent.get(parent);
@@ -363,7 +364,7 @@ function collidingPairs(arr: Arrangement, kids: string[], scope: ReviewScope): O
 /** ...and the masters under all of them, which are nobody's sibling. */
 function buriedMastersIn(arr: Arrangement, scope: ReviewScope): ReviewFinding[] {
   const boxes = new Map<string, Placement>();
-  for (const el of arr.page.elements) {
+  for (const el of arr.byId.values()) {
     if (isDrawn(arr, el.id)) boxes.set(el.id, own(arr.absolute, el.id) as Placement);
   }
   const drawn: DrawnPage = {
@@ -371,7 +372,7 @@ function buriedMastersIn(arr: Arrangement, scope: ReviewScope): ReviewFinding[] 
     orientation: arr.orientation,
     boxes,
     elements: arr.byId,
-    parents: new Map(arr.page.elements.map((el) => [el.id, parentIn(arr, el.id)])),
+    parents: new Map([...arr.byId.keys()].map((id) => [id, parentIn(arr, id)])),
   };
   return buriedMasterFindings(drawn, scope.masters, scope.inScope);
 }

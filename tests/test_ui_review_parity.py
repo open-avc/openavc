@@ -209,6 +209,21 @@ CASES["overhangs"] = _project([
 # Sibling collisions, and the three things that look like one and are not: a
 # container holding its own child, two boxes under different containers, and a
 # pair that grazes by less than a pixel.
+# Two controls under one id, the first inside a container and the second a
+# type nothing draws: both sides review the id once, as its first copy, the
+# one a press reaches and the panel draws.
+CASES["repeated_id"] = _project([
+    _page(
+        "main",
+        [
+            {"id": "holder", "type": "group"},
+            {"id": "twin", "type": "button", "parent": "holder", "label": "T"},
+            {"id": "twin", "type": "unicorn", "label": "U"},
+        ],
+        [_landscape({"holder": _pct_box(50, 50, 50, 50), "twin": _pct_box(90, 10, 20, 20)})],
+    ),
+])
+
 CASES["overlaps"] = _project([
     _page(
         "main",
@@ -2145,6 +2160,12 @@ def test_an_unknown_type_answers_once_about_the_type(verdicts) -> None:
     assert [f["kind"] for f in findings] == ["unknown_element_type"]
     # The whole set is in the message, because this is where an author learns it.
     assert "plugin" in findings[0]["message"]
+
+
+def test_a_repeated_id_is_reviewed_once_as_its_first_copy(verdicts) -> None:
+    """Its container's overhang, said once, and nothing of the later copy's type."""
+    python_side, _ = verdicts["repeated_id"]
+    assert [f["kind"] for f in python_side if f["element_id"] == "twin"] == ["outside_its_container"]
 
 
 def test_a_state_picture_is_warned_only_where_nothing_draws_it(verdicts) -> None:
