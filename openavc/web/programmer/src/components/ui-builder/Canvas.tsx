@@ -643,9 +643,8 @@ export function Canvas({
       const element = page.elements.find((el) => el.id === anchorId);
       const lock = aspectLockOf(element);
 
-      // Siblings in the same container, as the canvas draws them (each id
-      // once, as its first copy), are what edges snap to — a box in another
-      // is not a line this one should stick to.
+      // Siblings in the same container, as the canvas draws them (each id once), are
+      // what edges snap to — a box in another is not a line this one should stick to.
       const movingSet = new Set(moving);
       const parentId = containerOf(element, byId);
       const siblings = [...byId.values()]

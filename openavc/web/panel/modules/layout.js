@@ -389,18 +389,24 @@ export function drawElementTree(page, layout, surface, how) {
  * copy met earlier in the walk is not drawn in its place.
  */
 function groupByParent(elements) {
-    const firsts = new Map();
-    for (const element of elements) {
-        if (element?.id && !firsts.has(element.id)) firsts.set(element.id, element);
-    }
-    const ids = new Set(firsts.keys());
+    const firsts = firstOfEachId(elements);
+    const ids = new Set(firsts.map(e => e.id));
     const byParent = new Map();
-    for (const element of firsts.values()) {
+    for (const element of firsts) {
         const key = ids.has(element.parent) ? element.parent : null;
         if (!byParent.has(key)) byParent.set(key, []);
         byParent.get(key).push(element);
     }
     return byParent;
+}
+
+/** Each id's first element, in page order, leaving out one with no id. */
+function firstOfEachId(elements) {
+    const firsts = new Map();
+    for (const element of elements) {
+        if (element?.id && !firsts.has(element.id)) firsts.set(element.id, element);
+    }
+    return [...firsts.values()];
 }
 
 /**
