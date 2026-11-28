@@ -4,6 +4,7 @@ import { ANY_CHANGE } from "../../api/conditionOperators.gen";
 import { referencedKey, writtenOperator } from "../../api/conditionEval";
 import type { StepNames } from "./commandLabels";
 import { timingWarnings } from "./conversionTiming";
+import { BACK, DISMISS } from "../shared/pageType";
 
 export interface StepTypeInfo {
   action: string;
@@ -151,8 +152,8 @@ export const STEP_TYPES: StepTypeInfo[] = [
     color: "#0d9488",
     summary: (step) => {
       const page = step.page ?? "?";
-      if (page === "$back") return "Back";
-      if (page === "$dismiss") return "Dismiss overlay";
+      if (page === BACK) return "Back";
+      if (page === DISMISS) return "Dismiss overlay";
       return `Go to ${page}`;
     },
     defaults: () => ({ action: "ui.navigate", page: "" }),

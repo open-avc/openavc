@@ -42,6 +42,17 @@ import { PAGE_RULES } from './project_values.gen.js';
 const HISTORY_LIMIT = 50;
 
 /**
+ * The panel's own moves, never page ids: `BACK` closes the overlay on top, or
+ * with none open goes back a page; `DISMISS` only closes the overlay on top.
+ */
+export const { back: BACK, dismiss: DISMISS } = PAGE_RULES.navigation_words;
+
+/** Whether a navigation `target` names no page: it starts with the navigation words' prefix. */
+export function namesNoPage(target) {
+    return typeof target === 'string' && target.startsWith(PAGE_RULES.navigation_prefix);
+}
+
+/**
  * How a page is shown: its type when the page rules know it, else what an
  * unknown type, or none, reads as (a regular page).
  */

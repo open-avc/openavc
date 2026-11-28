@@ -15,6 +15,7 @@
  */
 
 import { pickLook, withTwoStateWords } from './looks.js';
+import { namesNoPage } from './pages.js';
 
 /** What a nav is called: its label, else the page it goes to. */
 export function navName(elementDef) {
@@ -53,7 +54,7 @@ export function showsItsPage(elementDef, currentPage, overlayStack) {
     if (!elementDef.highlight_current) return false;
     const target = elementDef.target_page;
     // `$back` and `$dismiss` are moves, not places.
-    if (!target || target.startsWith('$')) return false;
+    if (!target || namesNoPage(target)) return false;
     return currentPage === target || overlayStack.includes(target);
 }
 

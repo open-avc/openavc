@@ -31,6 +31,7 @@ from __future__ import annotations
 from typing import Any, Callable, TYPE_CHECKING
 
 from openavc.core.state_store import StateStore
+from openavc.ui.page_rules import BACK, DISMISS
 
 if TYPE_CHECKING:
     from openavc.api.error_messages import CommandFailure
@@ -49,9 +50,9 @@ def _wait_until_text(step: dict[str, Any]) -> str:
 
 def _navigate_text(step: dict[str, Any]) -> str:
     page = step.get("page", "?")
-    if page == "$back":
+    if page == BACK:
         return "Going back"
-    if page == "$dismiss":
+    if page == DISMISS:
         return "Dismissing overlay"
     return f"Navigating panel to {page}"
 

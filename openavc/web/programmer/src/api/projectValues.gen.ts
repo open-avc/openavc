@@ -23,10 +23,11 @@
 // `opens_over` those that open over the page on screen in a box of their own,
 // and `unknown_type_reads_as` what any other type, or none, reads as. A
 // master's `pages` of `every_page` draws on every page. `navigation_words` are
-// the moves the panel makes itself, and a target starting with
-// `navigation_prefix` names no page. `overlay_box` is the box, as percentages
-// of the screen, each type that opens over draws in for a side it leaves
-// blank; a sidebar is always `sidebar_height` tall.
+// the moves the panel makes itself, by name (`back` closes the overlay on top
+// or goes back a page, `dismiss` only closes the overlay), and a target
+// starting with `navigation_prefix` names no page. `overlay_box` is the box,
+// as percentages of the screen, each type that opens over draws in for a side
+// it leaves blank; a sidebar is always `sidebar_height` tall.
 
 // ELEMENT_ID_RULE, from the element id rule (openavc/ui/page_structure.py),
 // is how a control's id is spelled: `pattern` is the whole id (a lowercase
@@ -319,10 +320,10 @@ export const PAGE_RULES = {
   ],
   "unknown_type_reads_as": "page",
   "every_page": "*",
-  "navigation_words": [
-    "$back",
-    "$dismiss"
-  ],
+  "navigation_words": {
+    "back": "$back",
+    "dismiss": "$dismiss"
+  },
   "navigation_prefix": "$",
   "overlay_box": {
     "overlay": {

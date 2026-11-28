@@ -63,6 +63,7 @@ from openavc.core.state_store import (
 )
 from openavc.drivers.param_labels import param_label as _readable_param
 from openavc.drivers.param_validation import required_param_sentence
+from openavc.ui.page_rules import NAVIGATION_WORDS
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -686,14 +687,11 @@ class _ProjectRefs:
 
     @classmethod
     def of(cls, project: Any) -> _ProjectRefs:
-        # Imported here: openavc.ui's reviews import this module.
-        from openavc.ui.page_references import NAVIGATION_SENTINELS
-
         return cls(
             devices=_ids(project, "devices"),
             macros=_ids(project, "macros"),
             groups={g.id: list(g.device_ids or []) for g in _listed(project, "device_groups")},
-            page_targets=_ids(getattr(project, "ui", None), "pages") | NAVIGATION_SENTINELS,
+            page_targets=_ids(getattr(project, "ui", None), "pages") | frozenset(NAVIGATION_WORDS),
         )
 
 

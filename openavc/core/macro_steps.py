@@ -36,6 +36,7 @@ from openavc.core.project_loader import MacroStep, reads_as
 from openavc.core.saved_params import saved_kwargs
 from openavc.core.state_store import check_authored_write
 from openavc.core.value_resolver import read_operand, resolve_in_text, resolve_ref
+from openavc.ui.page_rules import BACK, DISMISS
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -460,7 +461,7 @@ class MacroSteps:
     async def _navigate(self, step: dict[str, Any], _run: StepRun, _path: StepPath) -> None:
         page = step.get("page", "")
         if not page:
-            raise ValueError("ui.navigate step requires a 'page' value (page id, '$back', or '$dismiss')")
+            raise ValueError(f"ui.navigate step requires a 'page' value (page id, '{BACK}', or '{DISMISS}')")
         log.debug(f"  Macro step: ui.navigate -> {page}")
         # Emit ui.page.<page_id> for symmetry with element press-side
         # navigation, but only for real page IDs — $back/$dismiss are

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { pageGroups } from "./pickerOptions";
+import { PAGE_RULES } from "../../api/projectValues.gen";
+import { getStepType } from "../macros/macroHelpers";
+import { NAVIGATE_SPECIAL_GROUP, pageGroups } from "./pickerOptions";
 
 const ids = (groups: ReturnType<typeof pageGroups>) =>
   groups.map((g) => [g.label, g.options.map((o) => o.value)]);
@@ -29,5 +31,20 @@ describe("pageGroups", () => {
   it("leaves out a group with nothing in it", () => {
     expect(ids(pageGroups([{ id: "dlg", page_type: "overlay" }]))).toEqual([["Overlays / Sidebars", ["dlg"]]]);
     expect(pageGroups([])).toEqual([]);
+  });
+});
+
+describe("the panel's own moves", () => {
+  const moves = Object.values(PAGE_RULES.navigation_words);
+
+  it("are offered by the move picker, each once, as the page rules spell them", () => {
+    expect(NAVIGATE_SPECIAL_GROUP.options.map((o) => o.value)).toEqual(moves);
+  });
+
+  it("each read as a move of their own in a Navigate Panel step, never a page", () => {
+    const summary = getStepType("ui.navigate")!.summary!;
+    const said = moves.map((page) => summary({ action: "ui.navigate", page }));
+    expect(said).toEqual(["Back", "Dismiss overlay"]);
+    expect(summary({ action: "ui.navigate", page: "home" })).toBe("Go to home");
   });
 });

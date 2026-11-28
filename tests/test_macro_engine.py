@@ -1,13 +1,15 @@
 """Tests for MacroEngine."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from openavc.core.device_manager import DeviceManager
 from openavc.core.event_bus import EventBus
 from openavc.core.macro_engine import MacroEngine
+from openavc.core.macro_text import StepWording
 from openavc.core.state_store import StateStore
+from openavc.ui.page_rules import NAVIGATION_WORDS
 
 
 @pytest.fixture
@@ -325,6 +327,13 @@ async def test_ui_navigate_emits_page_event(core):
     await engine.execute("welcome")
 
     assert received == ["ui.page.welcome"]
+
+
+@pytest.mark.parametrize("move", NAVIGATION_WORDS)
+def test_every_panel_move_is_announced_as_a_move_not_a_page(move):
+    wording = StepWording(StateStore(), MagicMock(), None, lambda _action: None)
+    said = wording.describe({"action": "ui.navigate", "page": move})
+    assert said and move not in said, said
 
 
 async def test_ui_navigate_back_does_not_emit_page_event(core):

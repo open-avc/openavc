@@ -10,7 +10,7 @@
  */
 import type { SelectOption, SelectGroup } from "./SearchableSelect";
 import { isFileCommand } from "./commandFiles";
-import { isRegularPage, opensOver } from "./pageType";
+import { BACK, DISMISS, isRegularPage, opensOver } from "./pageType";
 
 /** One entry in a driver's declared command map, as `GET /api/devices/{id}`
  *  returns it. Everything is optional: a command may declare nothing but its
@@ -124,11 +124,7 @@ export function pageGroups(
 export const NAVIGATE_SPECIAL_GROUP: SelectGroup = {
   label: "Go back",
   options: [
-    {
-      value: "$back",
-      label: "Back (close overlay, or previous page)",
-      hint: "$back",
-    },
-    { value: "$dismiss", label: "Close this overlay", hint: "$dismiss" },
+    { value: BACK, label: "Back (close overlay, or previous page)", hint: BACK },
+    { value: DISMISS, label: "Close this overlay", hint: DISMISS },
   ],
 };

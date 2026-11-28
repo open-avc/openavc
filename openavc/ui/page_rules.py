@@ -58,8 +58,14 @@ UNKNOWN_TYPE_READS_AS = PAGE
 #: What a master's ``pages`` says to draw on every page, and its blank.
 EVERY_PAGE = "*"
 
+#: Close the overlay on top, or with none open go back a page.
+BACK = "$back"
+
+#: Close the overlay on top, and nothing else.
+DISMISS = "$dismiss"
+
 #: The moves the panel makes itself, never page ids.
-NAVIGATION_WORDS = ("$back", "$dismiss")
+NAVIGATION_WORDS = (BACK, DISMISS)
 
 #: A navigation target starting with this names no page.
 NAVIGATION_PREFIX = "$"
@@ -180,7 +186,7 @@ def page_rules_table() -> dict[str, Any]:
         "opens_over": list(OPENS_OVER),
         "unknown_type_reads_as": UNKNOWN_TYPE_READS_AS,
         "every_page": EVERY_PAGE,
-        "navigation_words": list(NAVIGATION_WORDS),
+        "navigation_words": {"back": BACK, "dismiss": DISMISS},
         "navigation_prefix": NAVIGATION_PREFIX,
         "overlay_box": {kind: dict(box) for kind, box in OVERLAY_BOX.items()},
         "sidebar_height": SIDEBAR_HEIGHT,

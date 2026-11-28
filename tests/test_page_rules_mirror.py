@@ -1,8 +1,8 @@
 """The panel's page rules, held to the project schema's.
 
 What a page is, how a way onto it opens it, which page stands in for one that
-is missing, whether a master element draws on a page, and the box an overlay
-draws in are the page rules
+is missing, whether a master element draws on a page, the navigation words and
+the box an overlay draws in are the page rules
 (``openavc/ui/page_rules.py``), rendered into the panel's generated module as
 ``PAGE_RULES``. The panel asks them through ``web/panel/modules/pages.js``,
 whose functions also decide what to do with what the table says: a type it
@@ -88,6 +88,10 @@ MASTER_HIDDEN = [ABSENT, None, False, True, 0, 1, "", "yes"]
 #: The pages a master is asked about.
 MASTER_PAGE_IDS = ["home", "other"]
 
+#: What a navigation target can say: the two words, other words with and
+#: without the prefix, a page id, blanks, and values that are no text.
+TARGETS = ["$back", "$dismiss", "$home", "$", "back", "home", " $back", "", None, 5, ["$back"], {}]
+
 
 def _page(page_id: str, written: object, **more: object) -> dict:
     page = {"id": page_id, **more}
@@ -118,7 +122,10 @@ _SCRIPT = """
 const pages = await import(process.argv[1]);
 const { readFileSync } = await import('node:fs');
 const corpus = JSON.parse(readFileSync(0, 'utf8'));
-const out = { opens_over: [], fallback: [], stand_in: [], boxes: [], draws_on: [], draws_nothing: [], runs_markup: [] };
+const out = {
+    opens_over: [], fallback: [], stand_in: [], boxes: [], draws_on: [], draws_nothing: [], runs_markup: [],
+    names_no_page: [], words: { back: pages.BACK, dismiss: pages.DISMISS },
+};
 const id = (page) => (page ? page.id : null);
 for (const page of corpus.typed) out.opens_over.push(pages.opensOver(page));
 for (const list of corpus.lists) {
@@ -126,6 +133,7 @@ for (const list of corpus.lists) {
     for (const wanted of corpus.wanted) out.stand_in.push(id(pages.standIn(list, wanted)));
 }
 for (const page of corpus.boxed) out.boxes.push(pages.overlayBox(page));
+for (const target of corpus.targets) out.names_no_page.push(pages.namesNoPage(target));
 for (const master of corpus.masters) {
     for (const pageId of corpus.master_page_ids) {
         const empty = { id: pageId, elements: [] };
@@ -149,6 +157,7 @@ def _corpus() -> dict:
             _master(t, pages, hidden) for t in MASTER_TYPES for pages in MASTER_PAGES for hidden in MASTER_HIDDEN
         ],
         "master_page_ids": MASTER_PAGE_IDS,
+        "targets": TARGETS,
     }
 
 
@@ -267,6 +276,16 @@ def test_the_builder_reads_a_page_type_as_the_rules_do() -> None:
         assert page_type_of(case["page"]) == case["reads_as"], case["page"]
     held = {json.dumps(case["page"].get("page_type", ABSENT)) for case in cases}
     assert held == {json.dumps(written) for written in WRITTEN_TYPES}
+
+
+def test_the_panel_names_the_moves_the_rules_name(panel_answers: dict) -> None:
+    assert panel_answers["words"] == {"back": page_rules.BACK, "dismiss": page_rules.DISMISS}
+    assert tuple(panel_answers["words"].values()) == page_rules.NAVIGATION_WORDS
+
+
+def test_a_target_names_no_page_where_the_rules_say(panel_answers: dict) -> None:
+    for target, got in zip(TARGETS, panel_answers["names_no_page"], strict=True):
+        assert got is names_no_page(target), target
 
 
 def test_the_navigation_words_are_moves_and_the_prefix_names_no_page() -> None:

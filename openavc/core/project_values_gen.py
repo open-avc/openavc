@@ -272,10 +272,11 @@ BANNER = """\
 // `opens_over` those that open over the page on screen in a box of their own,
 // and `unknown_type_reads_as` what any other type, or none, reads as. A
 // master's `pages` of `every_page` draws on every page. `navigation_words` are
-// the moves the panel makes itself, and a target starting with
-// `navigation_prefix` names no page. `overlay_box` is the box, as percentages
-// of the screen, each type that opens over draws in for a side it leaves
-// blank; a sidebar is always `sidebar_height` tall.
+// the moves the panel makes itself, by name (`back` closes the overlay on top
+// or goes back a page, `dismiss` only closes the overlay), and a target
+// starting with `navigation_prefix` names no page. `overlay_box` is the box,
+// as percentages of the screen, each type that opens over draws in for a side
+// it leaves blank; a sidebar is always `sidebar_height` tall.
 """
 
 TS_ELEMENT_ID_NOTE = """

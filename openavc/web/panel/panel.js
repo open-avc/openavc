@@ -52,7 +52,7 @@ import {
     masterOrientation, masterPlacement, placeElement, selectLayout, viewportOrientation,
 } from './modules/layout.js';
 import {
-    closeOverlayFrame, drawOverlayFrame, isCustomPage, masterDrawsOn, opensOver, pageBehind,
+    BACK, DISMISS, closeOverlayFrame, drawOverlayFrame, isCustomPage, masterDrawsOn, opensOver, pageBehind,
     pageDrawsNothing, pageOpening, pageRunsAuthorMarkup, rememberPage, showsOpening, standIn,
 } from './modules/pages.js';
 import {
@@ -938,11 +938,11 @@ class PanelApp {
     /** `$dismiss` and `$back`, which name no page: true when `pageId` was one of them. */
     _followPageCommand(pageId) {
         // $dismiss — overlay only, no page-history fallback
-        if (pageId === '$dismiss') {
+        if (pageId === DISMISS) {
             this.dismissOverlay();
             return true;
         }
-        if (pageId !== '$back') return false;
+        if (pageId !== BACK) return false;
         // $back — phone-style: if an overlay is open, dismiss it;
         // otherwise pop the page-history stack and go there.
         if (this.overlayStack.length > 0) this.dismissOverlay();
