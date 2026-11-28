@@ -104,13 +104,19 @@ def find_element(project: Any, element_id: str) -> Any | None:
     )
 
 
+#: Controls whose press is a tap whatever their first action says: a camera
+#: preset's editor offers actions and no mode. The panel's ``TAP_ONLY_TYPES``
+#: (``modules/press.js``) is the same set.
+TAP_ONLY_TYPES = frozenset({"camera_preset"})
+
+
 def press_mode(element: Any) -> tuple[str, dict[str, Any]]:
-    """A button's interaction mode, and the action carrying it.
+    """A control's interaction mode, and the action carrying it.
 
     Mirrors the panel's ``pressOf`` (``modules/press.js``): mode lives on the
-    FIRST action of ``do.press``, and a
-    toggle without a ``toggle_key`` has nothing to compare, so it degrades to
-    tap rather than doing nothing.
+    FIRST action of ``do.press``, a toggle without a ``toggle_key`` has
+    nothing to compare, so it degrades to tap rather than doing nothing, and
+    a control in ``TAP_ONLY_TYPES`` is a tap.
     """
     bindings = getattr(element, "bindings", None)
     do_map = bindings.get("do") if isinstance(bindings, dict) else None
@@ -119,6 +125,8 @@ def press_mode(element: Any) -> tuple[str, dict[str, Any]]:
     first = first if isinstance(first, dict) else {}
     mode = first.get("mode") or "tap"
     if mode == "toggle" and not first.get("toggle_key"):
+        mode = "tap"
+    if getattr(element, "type", None) in TAP_ONLY_TYPES:
         mode = "tap"
     return mode, first
 

@@ -1,8 +1,8 @@
-"""A button's press, held to the server's copy of it.
+"""A press, held to the server's copy of it.
 
 The panel decides what a press sends (`web/panel/modules/press.js`): the mode
-on the first action of `do.press`, a toggle with no key read as a tap, and a
-toggle's verdict -- `ui.toggle_off` while its key reads as its value, words
+on the first action of `do.press`, a toggle with no key read as a tap, a
+camera preset a tap whatever its action names, and a toggle's verdict -- `ui.toggle_off` while its key reads as its value, words
 compared apart from case, else `ui.press`. The server never sees that choice,
 only the frame, so anything that checks a toggle without pressing it (the
 AI's simulated press, a panel verification) asks `press_mode` and
@@ -29,7 +29,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from openavc.core.ui_events import press_mode, resolve_press
+from openavc.core.ui_events import TAP_ONLY_TYPES, press_mode, resolve_press
 from tests import gates
 
 PANEL_MODULES = Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel" / "modules"
@@ -48,6 +48,11 @@ SHAPES = [
     [{**_MACRO, "mode": "tap"}, {**_MACRO, "mode": "toggle", "toggle_key": "var.t"}],
 ]
 
+#: The controls a press is read on: a button, one with no type, and each the
+#: server reads as a tap whatever its first action names (a camera preset).
+TYPES = ["button", None, *sorted(TAP_ONLY_TYPES)]
+SHAPED = [(kind, shape) for kind in TYPES for shape in SHAPES]
+
 #: The values a toggle is written to mean on, and what its key can read.
 TOGGLE_VALUES = ["on", "ON", True, False, 1, 0, "1", "true", "", None, "null", 1.0, _MISSING]
 READINGS = ["on", "On", "off", True, False, 1, 0, 1.0, "1", "1.0", "true", "True", "", None, "null", _MISSING]
@@ -59,11 +64,11 @@ const press = await import(process.argv[1]);
 const { readFileSync } = await import('node:fs');
 const corpus = JSON.parse(readFileSync(0, 'utf8'));
 const out = { modes: [], toggles: [] };
-for (const bindings of corpus.shapes) {
-    out.modes.push(press.pressOf({ bindings: { do: { press: bindings } } }).mode);
+for (const { type, bindings } of corpus.shapes) {
+    out.modes.push(press.pressOf({ type, bindings: { do: { press: bindings } } }).mode);
 }
-for (const { action, state } of corpus.toggles) {
-    const p = press.pressOf({ bindings: { do: { press: [action] } } });
+for (const { type, action, state } of corpus.toggles) {
+    const p = press.pressOf({ type, bindings: { do: { press: [action] } } });
     out.toggles.push(press.frameAtPress(p, (key) => state[key]));
 }
 console.log(JSON.stringify(out));
@@ -81,7 +86,7 @@ def _state(reading: object) -> dict:
     return {} if reading is _MISSING else {"var.t": reading}
 
 
-TOGGLES = [(value, reading) for value in TOGGLE_VALUES for reading in READINGS]
+TOGGLES = [(kind, value, reading) for kind in TYPES for value in TOGGLE_VALUES for reading in READINGS]
 
 
 @pytest.fixture(scope="module")
@@ -89,8 +94,8 @@ def panel_answers() -> dict:
     if shutil.which("node") is None:
         gates.skip_or_fail(gates.NODE, "node not installed")
     corpus = json.dumps({
-        "shapes": SHAPES,
-        "toggles": [{"action": _toggle_action(v), "state": _state(r)} for v, r in TOGGLES],
+        "shapes": [{"type": kind, "bindings": shape} for kind, shape in SHAPED],
+        "toggles": [{"type": k, "action": _toggle_action(v), "state": _state(r)} for k, v, r in TOGGLES],
     })
     proc = subprocess.run(
         ["node", "--input-type=module", "-e", _SCRIPT, (PANEL_MODULES / "press.js").as_uri()],
@@ -100,8 +105,8 @@ def panel_answers() -> dict:
     return json.loads(proc.stdout)
 
 
-def _element(press: object) -> SimpleNamespace:
-    return SimpleNamespace(bindings={"do": {"press": press}})
+def _element(press: object, kind: str | None = "button") -> SimpleNamespace:
+    return SimpleNamespace(type=kind, bindings={"do": {"press": press}})
 
 
 class _State:
@@ -113,16 +118,16 @@ class _State:
 
 
 def test_the_panel_reads_a_press_mode_the_way_the_server_does(panel_answers: dict) -> None:
-    for shape, got in zip(SHAPES, panel_answers["modes"], strict=True):
-        assert got == press_mode(_element(shape))[0], shape
+    for (kind, shape), got in zip(SHAPED, panel_answers["modes"], strict=True):
+        assert got == press_mode(_element(shape, kind))[0], (kind, shape)
 
 
 def test_the_panel_decides_a_toggle_the_way_the_server_does(panel_answers: dict) -> None:
     differ = []
-    for (value, reading), got in zip(TOGGLES, panel_answers["toggles"], strict=True):
-        event, _why = resolve_press(_element([_toggle_action(value)]), _State(_state(reading)))
+    for (kind, value, reading), got in zip(TOGGLES, panel_answers["toggles"], strict=True):
+        event, _why = resolve_press(_element([_toggle_action(value)], kind), _State(_state(reading)))
         if got != f"ui.{event}":
-            differ.append((value, reading))
+            differ.append((kind, value, reading))
     assert not differ, f"the panel and the server disagree on these toggles: {differ}"
 
 
@@ -131,3 +136,12 @@ def test_the_corpus_reaches_both_verdicts(panel_answers: dict) -> None:
     verdicts = panel_answers["toggles"]
     assert verdicts.count("ui.toggle_off") >= 10 and verdicts.count("ui.press") >= 10
     assert {"tap", "hold_repeat", "tap_hold", "toggle", "double"} <= set(panel_answers["modes"])
+
+
+def test_a_camera_preset_is_a_tap_on_both_sides(panel_answers: dict) -> None:
+    """Its editor offers actions and no mode, so a mode written by hand or by
+    the assistant is never what a press of it sends."""
+    modes = {got for (kind, _shape), got in zip(SHAPED, panel_answers["modes"], strict=True) if kind == "camera_preset"}
+    assert modes == {"tap"}
+    on = _element([_toggle_action("on")], "camera_preset")
+    assert resolve_press(on, _State({"var.t": "on"})) == ("press", None)

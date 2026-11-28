@@ -28,7 +28,8 @@ import { sameValue } from './compare.js';
 
 /**
  * Controls whose press is a tap whatever their first action says: a camera
- * preset's editor offers actions and no mode.
+ * preset's editor offers actions and no mode. core/ui_events.py
+ * `TAP_ONLY_TYPES` is the server's copy.
  */
 const TAP_ONLY_TYPES = new Set(['camera_preset']);
 
