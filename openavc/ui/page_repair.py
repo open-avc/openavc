@@ -349,8 +349,8 @@ def _geometry_view(page: dict, elements: list[dict]) -> SimpleNamespace:
 
 
 def _first_of_each_id(layouts: list[dict]) -> list[dict]:
-    """Each arrangement with text for an id, the first of an id the panel
-    draws; one after it with the same id is drawn from it."""
+    """Each arrangement with text for an id, the first of each id, the one
+    the panel draws (``page_geometry.first_by_id``)."""
     named = [layout for layout in layouts if _text(layout.get("id"))]
     return list(first_by_id(named, itemgetter("id")).values())
 
