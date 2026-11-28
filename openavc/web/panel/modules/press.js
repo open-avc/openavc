@@ -1,5 +1,6 @@
 /**
- * A press: which frame it sends when it is pressed and when it is let go, a
+ * A press and a drag: how each ends however the browser delivers its end,
+ * and which frame a press sends when it is pressed and when it is let go, a
  * button's in each of its four modes and a camera preset's, always a tap.
  *
  *   tap         -- `ui.press` at the press
@@ -22,9 +23,46 @@
  * The hold timers are the panel's (`holdTimers`): a page change, a dialog
  * closing, the socket dropping and the panel going to the background each
  * end them, so the panel lends `repeat` and `endHold` to every press.
+ *
+ * A drag (a slider, a fader, a routing matrix's crosspoint) ends on one set
+ * of events, `DRAG_ENDS`: a pointer, a mouse or a touch let go, the browser
+ * cancelling the pointer or the touch, or the window losing focus with the
+ * finger or the mouse still down. A drag that missed its end would stay
+ * held, following the next finger anywhere on the page.
  */
 
 import { sameValue } from './compare.js';
+
+/** The ends of a drag that let it go where it is: a pointer, a mouse (a fader starts on its mousedown) or a touch lifted. */
+const DRAG_LET_GO = ['pointerup', 'mouseup', 'touchend'];
+
+/**
+ * The ends of a drag that abandon it: the browser cancelling the pointer or
+ * the touch (a system gesture, a notification pulled down) and the window
+ * losing focus. None carries a point the drag was let go over.
+ */
+const DRAG_ABANDONED = ['pointercancel', 'touchcancel', 'blur'];
+
+/** Every way a drag ends. A slider listens for them on its own range input, a fader and a crosspoint at the window. */
+export const DRAG_ENDS = [...DRAG_LET_GO, ...DRAG_ABANDONED];
+
+/**
+ * End a drag at the first of its ends the window hears, once:
+ * `onEnd(event, letGo)`, `letGo` false for a cancel or a lost focus. Every
+ * listener comes off at that first end; the function returned takes them off
+ * for a drag something else ended (its page redrawn).
+ */
+export function endDragAtTheWindow(onEnd) {
+    const end = (e) => {
+        stop();
+        onEnd(e, DRAG_LET_GO.includes(e.type));
+    };
+    const stop = () => {
+        for (const type of DRAG_ENDS) window.removeEventListener(type, end);
+    };
+    for (const type of DRAG_ENDS) window.addEventListener(type, end, { passive: true });
+    return stop;
+}
 
 /**
  * Controls whose press is a tap whatever their first action says: a camera

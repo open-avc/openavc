@@ -26,6 +26,7 @@
  */
 
 import { truthOf } from './compare.js';
+import { endDragAtTheWindow } from './press.js';
 import { styleSize } from './project_values.js';
 
 // How far a finger may travel on a matrix crosspoint before the gesture stops
@@ -1235,14 +1236,13 @@ class RouteGesture {
         this.originY = rect.top + rect.height / 2;
         this.dragging = false;
         this.onMove = (me) => this.move(me);
-        this.onUp = (ue) => this.finish(ue, false);
-        this.onCancel = () => this.finish(null, true);
+        this.stopEnds = null;
     }
 
+    /** Follow the pointer, and end at the first end of a drag the window hears (press.js): let go routes, a cancel or a lost focus does not. */
     listen() {
         document.addEventListener('pointermove', this.onMove);
-        document.addEventListener('pointerup', this.onUp);
-        document.addEventListener('pointercancel', this.onCancel);
+        this.stopEnds = endDragAtTheWindow((e, letGo) => this.finish(letGo ? e : null, !letGo));
         this.matrix.el._matrixDragCleanup = () => this.finish(null, true);
     }
 
@@ -1284,8 +1284,7 @@ class RouteGesture {
     finish(ue, cancelled) {
         const matrix = this.matrix;
         document.removeEventListener('pointermove', this.onMove);
-        document.removeEventListener('pointerup', this.onUp);
-        document.removeEventListener('pointercancel', this.onCancel);
+        this.stopEnds();
         matrix.el._matrixDragCleanup = null;
         matrix.dropLine();
         const wasDragging = this.dragging;
@@ -1297,15 +1296,17 @@ class RouteGesture {
         matrix.drag.startInput = null;
         // A cancelled pointer is the browser saying it took this gesture over
         // to scroll with; a moved scrollbar says the same thing after the fact.
+        // The window losing focus mid-gesture routes nothing either.
         if (cancelled || this.scrolled()) return;
         if (srcIdx === null) return;
         matrix.routeCell(srcIdx, wasDragging ? releasedOver(ue) : this.o);
     }
 }
 
-/** The destination row of the crosspoint a drag was released over, or null. */
+/** The destination row of the crosspoint a drag was released over, or null; a lifted touch says where in its changedTouches. */
 function releasedOver(ue) {
-    const cp = crosspointAt(document.elementFromPoint(ue.clientX, ue.clientY));
+    const point = ue.changedTouches ? ue.changedTouches[0] : ue;
+    const cp = crosspointAt(document.elementFromPoint(point.clientX, point.clientY));
     if (!cp || cp.dataset.destIdx === undefined) return null;
     return parseInt(cp.dataset.destIdx);
 }

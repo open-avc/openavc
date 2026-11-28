@@ -4631,9 +4631,9 @@ const tests = {
             `the lock names the matrix, got "${app._lastTouchedElementId}"`);
     },
 
-    // A crosspoint gesture listens on the document, outside the element, so
-    // a page redraw has to end it: a finger lifted after the redraw must not
-    // route a cell that is no longer on the page.
+    // A crosspoint gesture listens outside the element, at the document and
+    // the window, so a page redraw has to end it: a finger lifted after the
+    // redraw must not route a cell that is no longer on the page.
     matrix_a_redraw_ends_a_crosspoint_gesture_without_routing() {
         const app = mkApp();
         app.ws = { readyState: 1, sent: [], send(m) { this.sent.push(JSON.parse(m)); } };
@@ -13775,6 +13775,170 @@ Object.assign(tests, {
         // A release nobody pressed for sends nothing.
         const [, unpressed] = await driveCase({ ...PRESSING, ui, steps: [['fire', at, 'mouseup']] });
         assert(sentTypes(unpressed).length === 0, `a release with no press sends nothing, got ${JSON.stringify(unpressed.s)}`);
+    },
+});
+
+// --- A fader's or a crosspoint's drag ends however the browser ends it ------
+//
+// A tablet can take a touch away mid-drag (a notification pulled down, a
+// system gesture), and the panel can lose focus with a finger or the mouse
+// still down. A drag that never hears its end keeps listening: a fader stays
+// held, ignoring its device's readings and following the next finger
+// anywhere on the page, and a crosspoint keeps its line on the screen and
+// routes on the next release anywhere.
+
+/** A mouse event at (`x`, `y`) on `target`, bubbling to the window as a browser's does. */
+const mouseAt = (target, type, x, y) => target.dispatchEvent(new window.MouseEvent(type,
+    { clientX: x, clientY: y, bubbles: true, cancelable: true }));
+/** A touch event on `target`, one finger at (`x`, `y`) when given, bubbling to the window. */
+const touchAt = (target, type, x, y) => {
+    const e = new window.Event(type, { bubbles: true, cancelable: true });
+    if (x !== undefined) e.touches = [{ clientX: x, clientY: y }];
+    target.dispatchEvent(e);
+};
+/** An event at the window alone, as its losing focus is. */
+const atTheWindow = (type) => window.dispatchEvent(new window.Event(type));
+/** How many listeners `run` put on the window and left there (one per type and handler). */
+function leftAtTheWindow(run) {
+    // Each handler's types still on the window.
+    const live = new Map();
+    const { addEventListener: add, removeEventListener: remove } = window;
+    window.addEventListener = function (type, fn, opts) {
+        if (!live.has(fn)) live.set(fn, new Set());
+        live.get(fn).add(type);
+        add.call(this, type, fn, opts);
+    };
+    window.removeEventListener = function (type, fn, opts) {
+        live.get(fn)?.delete(type);
+        remove.call(this, type, fn, opts);
+    };
+    try { run(); } finally {
+        window.addEventListener = add;
+        window.removeEventListener = remove;
+    }
+    return [...live.values()].reduce((n, types) => n + types.size, 0);
+}
+
+Object.assign(tests, {
+    a_fader_drag_ends_on_a_cancel_and_a_lost_focus() {
+        // Each ending, by the input that held the fader: [how it was held, how it ended].
+        const endings = {
+            'a touch the browser cancelled': ['touch', (wrap) => touchAt(wrap, 'touchcancel')],
+            'a touch pointer the browser cancelled': ['touch', (wrap) => mouseAt(wrap, 'pointercancel', 0, 0)],
+            'the window losing focus during a touch': ['touch', () => atTheWindow('blur')],
+            'the window losing focus during a mouse drag': ['mouse', () => atTheWindow('blur')],
+        };
+        for (const [how, [by, end]] of Object.entries(endings)) {
+            withFakeClock((advance) => {
+                const m = levelMount(levelDef('fader')('fd', { min: 0, max: 100, send_on_release: true }), LIVE_WITH_READING);
+                const wrap = m.node().querySelector('.fader-track-wrap');
+                const handle = m.node().querySelector('.fader-handle');
+                wrap.getBoundingClientRect = () => ({ left: 10, top: 20, width: 200, height: 100, right: 210, bottom: 120 });
+                const shown = () => handle.getAttribute('aria-valuenow');
+                const frames = () => m.sent.splice(0).map(frameLine);
+                const [down, move, up] = by === 'touch'
+                    ? [(y) => touchAt(wrap, 'touchstart', 60, y), (y) => touchAt(document, 'touchmove', 60, y), () => touchAt(document, 'touchend')]
+                    : [(y) => mouseAt(wrap, 'mousedown', 60, y), (y) => mouseAt(document, 'mousemove', 60, y), () => mouseAt(document, 'mouseup', 60, 0)];
+                // Held a quarter of the way up, dragged to three quarters, and ended.
+                down(95); advance(10); move(45); advance(10);
+                assert(frames().length === 0, `${how}: a send-on-release fader sends nothing mid-drag`);
+                end(wrap);
+                const landed = frames();
+                assert(JSON.stringify(landed) === JSON.stringify(['ui.change fd 75']),
+                    `${how}: the end lands the value it was dragged to, got ${JSON.stringify(landed)}`);
+                // No longer held: a reading draws again, and the next finger elsewhere moves nothing.
+                m.set(LEVEL_KEY, 12);
+                assert(shown() === '12', `${how}: a reading after the end draws on the handle, got ${shown()}`);
+                move(110); advance(500); up(); advance(500);
+                const later = frames();
+                assert(later.length === 0, `${how}: a move and a release after the end send nothing, got ${JSON.stringify(later)}`);
+                assert(shown() === '12', `${how}: a move after the end leaves the handle on the reading, got ${shown()}`);
+                // And the next drag is one drag, sending once.
+                down(95); move(45); up(); atTheWindow('blur');
+                const next = frames();
+                assert(JSON.stringify(next) === JSON.stringify(['ui.change fd 75']),
+                    `${how}: the next drag sends its value once, got ${JSON.stringify(next)}`);
+                // A second finger down before the first lifted is still the one drag: its page redrawn
+                // under it (which ends a drag) leaves nothing listening at the window.
+                const left = leftAtTheWindow(() => { down(95); down(45); m.app.renderCurrentPage(); });
+                assert(left === 0, `${how}: two fingers down and the page redrawn leave ${left} listener(s) at the window`);
+            });
+        }
+    },
+
+    a_crosspoint_drag_ends_on_a_cancel_and_a_lost_focus() {
+        const endings = {
+            'the window losing focus': () => atTheWindow('blur'),
+            'a touch the browser cancelled': (cell) => touchAt(cell, 'touchcancel'),
+            'a pointer the browser cancelled': (cell) => mouseAt(cell, 'pointercancel', 5, 5),
+        };
+        const lines = () => document.querySelectorAll('.matrix-drag-line').length;
+        for (const [how, end] of Object.entries(endings)) {
+            for (const dragged of [false, true]) {
+                const what = `${how}${dragged ? ' mid-drag' : ' during a tap'}`;
+                const app = mkApp();
+                app.ws = { readyState: 1, sent: [], send(msg) { this.sent.push(JSON.parse(msg)); } };
+                renderProject(app, project({
+                    elements: [{
+                        id: 'mx', type: 'matrix',
+                        matrix_config: {
+                            sources: [{ value: 1, label: 'Laptop' }],
+                            destinations: [{ value: 1, label: 'Left', route_key: 'device.sw.route_1' }],
+                        },
+                    }],
+                    placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+                }));
+                const routes = () => app.ws.sent.filter((msg) => msg.type === 'ui.route').length;
+                const cell = app.root.querySelector('.matrix-cell');
+                const before = lines();
+                mouseAt(cell, 'pointerdown', 5, 5);
+                if (dragged) mouseAt(document, 'pointermove', 40, 40);
+                assert(lines() === before + (dragged ? 1 : 0), `${what}: a drag draws its line and a tap none, got ${lines() - before}`);
+                end(cell);
+                assert(lines() === before, `${what}: the end takes the line away, ${lines() - before} left`);
+                mouseAt(document, 'pointerup', 5, 5);
+                assert(routes() === 0, `${what}: a release after the end routes nothing, got ${routes()} route(s)`);
+                // The matrix still takes the next tap, once.
+                mouseAt(cell, 'pointerdown', 5, 5); mouseAt(document, 'pointerup', 5, 5); atTheWindow('blur');
+                assert(routes() === 1, `${what}: the next tap routes once, got ${routes()}`);
+            }
+        }
+    },
+    // A drag let go by a touch lifted, with no pointerup before it, routes to
+    // the crosspoint under where the finger lifted: a lifted touch carries its
+    // point in changedTouches, not on the event.
+    a_crosspoint_drag_let_go_by_a_lifted_touch_routes_where_it_lifted() {
+        const app = mkApp();
+        app.ws = { readyState: 1, sent: [], send(msg) { this.sent.push(JSON.parse(msg)); } };
+        renderProject(app, project({
+            elements: [{
+                id: 'mx', type: 'matrix',
+                matrix_config: {
+                    sources: [{ value: 1, label: 'Laptop' }],
+                    destinations: [
+                        { value: 11, label: 'Left', route_key: 'device.sw.route_1' },
+                        { value: 12, label: 'Right', route_key: 'device.sw.route_2' },
+                    ],
+                },
+            }],
+            placements: { mx: { x: 2, y: 2, w: 90, h: 60 } },
+        }));
+        const dot = (dst) => app.root.querySelector(`.matrix-crosspoint[data-output="${dst}"]`);
+        // jsdom has no layout: the point (40, 40) is over the Right row's crosspoint.
+        document.elementFromPoint = (x, y) => (x === 40 && y === 40 ? dot(12) : null);
+        try {
+            mouseAt(dot(11).parentElement, 'pointerdown', 5, 5);
+            mouseAt(document, 'pointermove', 40, 40);
+            const lifted = new window.Event('touchend', { bubbles: true });
+            lifted.changedTouches = [{ clientX: 40, clientY: 40 }];
+            dot(12).dispatchEvent(lifted);
+        } finally {
+            // The stub was the document's own property; the prototype's (if any) shows again.
+            delete document.elementFromPoint;
+        }
+        const routes = app.ws.sent.filter((msg) => msg.type === 'ui.route');
+        assert(JSON.stringify(routes) === JSON.stringify([{ type: 'ui.route', element_id: 'mx', input: 1, output: 12 }]),
+            `a drag let go by a lifted touch routed ${JSON.stringify(routes)}`);
     },
 });
 

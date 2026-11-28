@@ -28,6 +28,7 @@
  * panel.js.
  */
 
+import { DRAG_ENDS, endDragAtTheWindow } from './press.js';
 import { boundedNumber } from './project_values.js';
 import { numberToShow } from './readings.js';
 
@@ -38,9 +39,6 @@ const FADER_DECIMALS = 1;
 // A logarithmic slider gets at least this many positions, so the low end of
 // its travel can still be reached finely.
 const LOG_MIN_STEPS = 200;
-// Every way a drag on a slider ends. A range input is not reliably focused
-// during a touch drag, so the pointer and touch ends are listened for too.
-const SLIDER_DRAG_ENDS = ['pointerup', 'pointercancel', 'blur', 'touchend', 'touchcancel'];
 
 /** A number held between two others, `low` winning when they cross. */
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -378,10 +376,12 @@ export class SliderControl extends LevelControl {
         // 'change' fires when the value is committed: a release, a key.
         input.addEventListener('change', () => this.committed());
         // A drag in progress keeps readings off the thumb (the panel checks
-        // `_dragging` before showing one).
+        // `_dragging` before showing one). A range input is not reliably
+        // focused during a touch drag, so every end of a drag is listened for
+        // (press.js), not only its blur.
         input.addEventListener('pointerdown', () => { input._dragging = true; });
         const endDrag = () => { input._dragging = false; };
-        for (const type of SLIDER_DRAG_ENDS) input.addEventListener(type, endDrag);
+        for (const type of DRAG_ENDS) input.addEventListener(type, endDrag);
     }
 
     /** The thumb moved: redraw, and stream the value unless the control sends on release only. */
@@ -500,6 +500,8 @@ export class FaderControl extends LevelControl {
         this.showScale = style.show_scale !== false;
         this.label = element.label || `Fader ${element.id}`;
         this.dragging = false;
+        // What takes a drag's ends off the window again (grab), while one is held.
+        this.stopEnds = null;
     }
 
     /** Draw the scale, the track and its handle, and the readout into `el`, then listen. */
@@ -611,28 +613,29 @@ export class FaderControl extends LevelControl {
             e.preventDefault();
             this.follow(e);
         };
-        this.onEnd = () => this.release();
         wrap.addEventListener('mousedown', (e) => {
             this.grab(e);
             document.addEventListener('mousemove', this.onMove);
-            document.addEventListener('mouseup', this.onEnd);
         });
         wrap.style.touchAction = 'none';
         wrap.addEventListener('touchstart', (e) => {
             this.grab(e);
             document.addEventListener('touchmove', this.onMove);
-            document.addEventListener('touchend', this.onEnd);
         });
         // The keys go through the same rate as a drag, so a held key streams
         // and its last step always lands.
         this.handle.addEventListener('keydown', (e) => this.stepByKey(e));
         // A drag still going when the surface it is drawn on ends lands its
-        // last value and stops listening to the document.
+        // last value and stops listening to the document and the window.
         this.host.onEnd(() => this.release());
     }
 
+    /** Take hold: follow the pointer, and end at the first end of a drag the window hears (press.js), a cancel and a lost focus included. */
     grab(e) {
         e.preventDefault();
+        // A second finger down before the first lifted: still the one drag, with one set of ends.
+        if (this.stopEnds) this.stopEnds();
+        this.stopEnds = endDragAtTheWindow(() => this.release());
         this.dragging = true;
         // Keeps readings off the handle mid-drag (show).
         this.handle._dragging = true;
@@ -663,7 +666,7 @@ export class FaderControl extends LevelControl {
         return snapToStep(val, this.step);
     }
 
-    /** End a drag: send its final value once, and stop listening to the document. */
+    /** End a drag: send its final value once, and stop listening to the document and the window. */
     release() {
         const wasDragging = this.dragging;
         this.dragging = false;
@@ -678,10 +681,10 @@ export class FaderControl extends LevelControl {
         // answered when the refusal arrives: the panel's
         // _revertRefusedInteraction.)
         if (wasDragging && this.host.offline()) this.showUnknown();
+        if (this.stopEnds) this.stopEnds();
+        this.stopEnds = null;
         document.removeEventListener('mousemove', this.onMove);
-        document.removeEventListener('mouseup', this.onEnd);
         document.removeEventListener('touchmove', this.onMove);
-        document.removeEventListener('touchend', this.onEnd);
     }
 
     /** An arrow key steps the value from the one it is showing (the bottom of the range when none). */

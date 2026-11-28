@@ -512,6 +512,13 @@ SCENARIOS = [
     # A camera preset's press ends however the browser delivers the release:
     # at the window, a cancel, the window losing focus, once.
     "a_camera_preset_press_ends_however_the_release_arrives",
+    # A fader's and a crosspoint's drag end on a cancel and on the window
+    # losing focus, as a slider's does: the fader lands where it was dragged
+    # to and lets go, the crosspoint drops its line and routes nothing.
+    "a_fader_drag_ends_on_a_cancel_and_a_lost_focus",
+    "a_crosspoint_drag_ends_on_a_cancel_and_a_lost_focus",
+    # A crosspoint drag let go by a lifted touch alone routes where it lifted.
+    "a_crosspoint_drag_let_go_by_a_lifted_touch_routes_where_it_lifted",
     # A control's caption, the icon beside its words on every side, words a
     # look or an override changes beside an icon, and the accessible name,
     # pinned whole (tests/fixtures/panel_words_pins.json).
