@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { demoteFromMaster, promoteToMaster } from "./uiBuilderHelpers";
+import { demoteFromMaster, promoteToMaster, removeMasterElement } from "./uiBuilderHelpers";
 import { DEFAULT_PLACEMENT } from "./pageGeometry";
 import type { Layout, MasterElement, Placement, UIElement, UIPage } from "../../api/types";
 
@@ -233,5 +233,17 @@ describe("demoteFromMaster: the box a control comes back with", () => {
     const out = demoteFromMaster(pages, masters, "nope", "pg");
     expect(out.pages).toBe(pages);
     expect(out.masterElements).toBe(masters);
+  });
+});
+
+describe("removeMasterElement: deleting one master", () => {
+  it("deletes the first of two masters sharing the id and leaves the other", () => {
+    const masters = [master("m", undefined, { label: "first" }), master("n"), master("m", undefined, { label: "second" })];
+    expect(removeMasterElement(masters, "m")).toEqual([masters[1], masters[2]]);
+  });
+
+  it("hands back the same masters when none has the id", () => {
+    const masters = [master("m")];
+    expect(removeMasterElement(masters, "nope")).toBe(masters);
   });
 });

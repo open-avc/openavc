@@ -1127,11 +1127,13 @@ export function updateMasterElement(
   );
 }
 
+/** Delete a master: of two sharing the id, the first, the one a press reaches. */
 export function removeMasterElement(
   masterElements: MasterElement[],
   elementId: string,
 ): MasterElement[] {
-  return masterElements.filter(m => m.id !== elementId);
+  const at = masterElements.findIndex(m => m.id === elementId);
+  return at < 0 ? masterElements : masterElements.filter((_m, i) => i !== at);
 }
 
 // --- Page group helpers ---
