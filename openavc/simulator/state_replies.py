@@ -224,9 +224,20 @@ class ChildListAnswer:
     id_wire_map: dict[str, str] | None  # local id -> wire id
     conversion: dict | None
 
+    def render_list(self, start: int | str, children: list[tuple[str, Any]]) -> str | None:
+        """The list reply for ``(child id, value)`` pairs, without the
+        delimiter. An item no rule reads back is left out of a list whose
+        items name their child; a list read by place has no reply then (a
+        hole would move every later child up a place), nor does a list left
+        with no items."""
+        items = [self.render_item(child_id, value) for child_id, value in children]
+        if self.by_place and None in items:
+            return None
+        kept = [item for item in items if item is not None]
+        return self.render(start, kept) if kept else None
+
     def render_item(self, child_id: str, value: Any) -> str | None:
-        """One child's item, or None when its rendering does not read back
-        (the caller then has no list to send)."""
+        """One child's item, or None when its rendering does not read back."""
         wire_id = _wire_id(child_id, self.id_wire_map)
         if self.value_words is not None:
             word = self.value_words.get(value_words(value))

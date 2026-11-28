@@ -252,13 +252,16 @@ class _PatternWalk:
             emission, i = self.branches(0, depth=0)
         except _Unsupported:
             return None
-        if emission is None or i != len(self.src):
-            return None
-        if self.found != set(self.slots):
-            return None
-        if any(mark not in emission for mark in self.marks.values()):
-            return None
-        return emission if self.reads_back(emission) else None
+        return emission if self._complete(emission, i) else None
+
+    def _complete(self, emission: str | None, end: int) -> bool:
+        """True when the walk read the whole pattern (to ``end``), reached
+        every slot and kept each one in ``emission``, and it reads back."""
+        if emission is None or end != len(self.src) or self.found != set(self.slots):
+            return False
+        if not all(mark in emission for mark in self.marks.values()):
+            return False
+        return self.reads_back(emission)
 
     def carries_slot(self, piece: str) -> bool:
         """True when a slot was emitted into ``piece``."""
