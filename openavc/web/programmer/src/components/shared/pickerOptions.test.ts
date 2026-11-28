@@ -43,8 +43,8 @@ describe("the panel's own moves", () => {
 
   it("each read as a move of their own in a Navigate Panel step, never a page", () => {
     const summary = getStepType("ui.navigate")!.summary!;
-    const said = moves.map((page) => summary({ action: "ui.navigate", page }));
+    const said = moves.map((page) => summary({ action: "ui.navigate", page }, [], []));
     expect(said).toEqual(["Back", "Dismiss overlay"]);
-    expect(summary({ action: "ui.navigate", page: "home" })).toBe("Go to home");
+    expect(summary({ action: "ui.navigate", page: "home" }, [], [])).toBe("Go to home");
   });
 });
