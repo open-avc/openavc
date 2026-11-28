@@ -244,6 +244,9 @@ SCENARIOS = [
     # A toggle button says whether the thing it toggles is on.
     "q209_a_toggle_button_shows_whether_it_is_on",
     "q209_the_press_still_picks_its_half_from_the_same_state",
+    "q209_a_toggle_on_an_unreachable_device_presses_the_way_it_is_drawn",
+    "q209_a_toggle_that_wakes_its_device_presses_on_its_reading",
+    "q209_a_toggle_with_its_own_look_presses_off_while_its_device_is_away",
     "q209_the_lit_colour_follows_the_accent_and_stays_readable",
     "q209_a_toggle_says_the_words_it_was_given",
     "q209_a_toggle_naming_no_words_is_left_alone",

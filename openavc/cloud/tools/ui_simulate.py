@@ -6,7 +6,8 @@ and the state changes heard while it ran. Three things a panel does that the
 server never sees are done here instead. A navigate is broadcast as well as
 emitted, since panels switch page only on the broadcast. A press on a toggle
 is resolved against its bound key the way the browser resolves it
-(``ui_events.resolve_press``), or a working toggle reports its on branch every
+(``ui_events.resolve_press``, a device that is away reading as off unless the
+press wakes it from sleep), or a working toggle reports its on branch every
 time. And a silence is explained, against the element the runtime reached
 (``ui_events.find_element``).
 
@@ -23,7 +24,8 @@ from typing import Any
 from openavc.api.error_messages import describe_press_failure
 from openavc.cloud.state_relay import cloud_state_value, is_cloud_excluded_key
 from openavc.core.event_bus import emit_page_move
-from openavc.core.ui_events import find_element, resolve_press
+from openavc.core.ui_events import find_element, press_mode, resolve_press
+from openavc.ui.action_devices import WAKE_DEVICES_KEY
 from openavc.utils.logger import get_logger
 
 log = get_logger(__name__)
@@ -111,8 +113,31 @@ def _resolved(engine: Any, state: Any, action: str, element_id: str) -> tuple[st
     if action == "press":
         element = find_element(getattr(engine, "project", None), element_id)
         if element is not None:
-            return resolve_press(element, state)
+            return resolve_press(element, state, _wake_devices(engine, element))
     return action, None
+
+
+def _wake_devices(engine: Any, element: Any) -> list[str]:
+    """The devices a toggle's press wakes, as panels are served them
+    (``Engine.panel_ui``, the copy ``find_element`` reaches: pages, then
+    masters): one asleep keeps the toggle's reading. Worked out for a toggle
+    only, since nothing else asks."""
+    if press_mode(element)[0] != "toggle":
+        return []
+    ui = engine.panel_ui()
+    if not isinstance(ui, dict):
+        return []
+    for served in _served_elements(ui):
+        if served.get("id") == element.id:
+            wakes = served.get(WAKE_DEVICES_KEY)
+            return list(wakes) if isinstance(wakes, list) else []
+    return []
+
+
+def _served_elements(ui: dict) -> list[dict]:
+    """A served definition's page elements, then its master elements."""
+    pages = [el for page in ui.get("pages") or [] for el in page.get("elements") or []]
+    return [el for el in pages + list(ui.get("master_elements") or []) if isinstance(el, dict)]
 
 
 def _event_args(action: str, effective: str, element_id: str, value: Any) -> tuple | None:

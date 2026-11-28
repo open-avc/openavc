@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from openavc.cloud.ai_tool_handler import AIToolHandler
+from openavc.core.engine import Engine
 from openavc.core.project_loader import ProjectConfig
 from openavc.core.state_store import StateStore
 from openavc.core.ui_events import UIEventRuntime
@@ -323,6 +324,44 @@ async def test_a_toggle_off_its_value_is_a_plain_press_with_a_reason():
         "success", "action", "toggle", "element_id", "dispatched", "state_changes",
     ]
     assert "!=" in result["toggle"]
+
+
+@pytest.mark.asyncio
+async def test_a_toggle_whose_device_is_away_is_pressed_as_off():
+    """A panel draws the toggle off while its device is away, and presses it
+    the way it is drawn: the press action, whatever the device said last."""
+    store = StateStore()
+    store.set("device.amp.power", "on", source="device.amp")
+    store.set("device.amp.presence", "offline", source="system")
+    result, rec, _ = await _simulate(
+        {"action": "press", "element_id": "toggle"}, store=store, returns=[{"action": "y"}],
+    )
+    assert rec.calls == [("handle_ui_event", ("press", "toggle"), {"dry_run": False})]
+    assert "dispatched_as" not in result
+    assert "device 'amp', which is offline" in result["toggle"], result["toggle"]
+
+
+@pytest.mark.asyncio
+async def test_a_toggle_that_wakes_its_sleeping_device_keeps_its_reading():
+    """A press whose command works with the device off the network keeps the
+    reading of a device asleep, as the panel is served it (`wake_devices`)."""
+    store = StateStore()
+    store.set("device.amp.power", "on", source="device.amp")
+    store.set("device.amp.presence", "asleep", source="system")
+    rec = _Recorder(store, returns=[])
+    engine = _engine(rec)
+    engine.devices.command_works_offline = lambda device, command: command == "power"
+    engine.panel_ui = lambda: Engine.panel_ui(engine)
+    result, _, _ = await _simulate({"action": "press", "element_id": "toggle"}, store=store, engine=engine)
+    assert rec.calls == [("handle_ui_event", ("toggle_off", "toggle"), {"dry_run": False})]
+    assert result["dispatched_as"] == "toggle_off"
+
+    engine.devices.command_works_offline = lambda device, command: False
+    rec.calls.clear()
+    await _simulate({"action": "press", "element_id": "toggle"}, store=store, engine=engine)
+    assert rec.calls == [("handle_ui_event", ("press", "toggle"), {"dry_run": False})], (
+        "a press that wakes nothing reads a sleeping device as away"
+    )
 
 
 @pytest.mark.asyncio

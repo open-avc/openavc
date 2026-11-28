@@ -4082,6 +4082,79 @@ const tests = {
             `on -> the off action, got ${JSON.stringify(sent[0])}`);
     },
 
+    // An unreachable device's last reading is not drawn: the toggle's light
+    // goes out. Its press reads the same thing the light shows, so a toggle
+    // drawn off sends its on action, whatever the device said before it went.
+    q209_a_toggle_on_an_unreachable_device_presses_the_way_it_is_drawn() {
+        const app = mkApp();
+        const sent = [];
+        app.send = (m) => sent.push(m);
+        const proj = project({
+            elements: [toggleButton('mute', 'device.amp.mute', true)],
+            placements: { mute: { x: 5, y: 5, w: 20, h: 10 } },
+        });
+        app.state = { 'device.amp.presence': 'online', 'device.amp.mute': true };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        const press = () => {
+            sent.length = 0;
+            el.dispatchEvent(new window.MouseEvent('mousedown', { cancelable: true }));
+            el.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+            return sent[0] && sent[0].type;
+        };
+        assert(press() === 'ui.toggle_off', 'online and on: the off action');
+
+        app.state['device.amp.presence'] = 'offline';
+        app.evaluateAllBindings(['device.amp.presence']);
+        assert(!el.classList.contains('toggle-on'), 'offline: drawn off');
+        const offline = press();
+        assert(offline === 'ui.press', `offline: the press follows the light, got ${offline}`);
+
+        app.state['device.amp.presence'] = 'online';
+        app.evaluateAllBindings(['device.amp.presence']);
+        assert(press() === 'ui.toggle_off', 'back online: its reading again');
+    },
+
+    // A device asleep on purpose keeps the reading of a control whose press
+    // wakes it (`wake_devices`): its light shows the real reading, and its
+    // press goes by that reading too.
+    q209_a_toggle_that_wakes_its_device_presses_on_its_reading() {
+        const app = mkApp();
+        const sent = [];
+        app.send = (m) => sent.push(m);
+        const btn = toggleButton('power', 'device.amp.power', 'on', { wake_devices: ['amp'] });
+        const proj = project({ elements: [btn], placements: { power: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = { 'device.amp.presence': 'asleep', 'device.amp.power': 'on' };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="power"]');
+        assert(el.classList.contains('toggle-on'), 'asleep, woken by this press: its reading is drawn');
+        el.dispatchEvent(new window.MouseEvent('mousedown', { cancelable: true }));
+        assert(sent[0] && sent[0].type === 'ui.toggle_off',
+            `and pressed on that reading, got ${JSON.stringify(sent[0])}`);
+        el.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    },
+
+    // A toggle with its own appearance binding draws no toggle light, and
+    // its press still reads its own key the way a light would: away is off.
+    q209_a_toggle_with_its_own_look_presses_off_while_its_device_is_away() {
+        const app = mkApp();
+        const sent = [];
+        app.send = (m) => sent.push(m);
+        const btn = toggleButton('mute', 'device.amp.mute', true);
+        btn.bindings.show = { look: {
+            key: 'device.amp.mute', default_state: 'false',
+            states: { true: { label: 'MUTED' }, false: { label: 'MUTE' } },
+        } };
+        const proj = project({ elements: [btn], placements: { mute: { x: 5, y: 5, w: 20, h: 10 } } });
+        app.state = { 'device.amp.presence': 'offline', 'device.amp.mute': true };
+        renderProject(app, proj);
+        const el = app.root.querySelector('[data-element-id="mute"]');
+        el.dispatchEvent(new window.MouseEvent('mousedown', { cancelable: true }));
+        assert(sent[0] && sent[0].type === 'ui.press',
+            `offline: the on action, got ${JSON.stringify(sent[0])}`);
+        el.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+    },
+
     // The built-in accents run from #1976D2 to #00E676, so one text colour
     // cannot serve them: white on the bright green is unreadable.
     q209_the_lit_colour_follows_the_accent_and_stays_readable() {

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any, Callable
 
 from openavc.core.condition_eval import match_key, same_value
@@ -27,6 +28,7 @@ from openavc.core.state_store import coerce_flat_primitive
 from openavc.core.value_resolver import resolve_ref
 from openavc.drivers.command_outcome import outcome_fields
 from openavc.ui.matrix_model import destination_for
+from openavc.ui.reading_offline import reading_offline, reporting_device
 from openavc.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -131,7 +133,9 @@ def press_mode(element: Any) -> tuple[str, dict[str, Any]]:
     return mode, first
 
 
-def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
+def resolve_press(
+    element: Any, state: Any, wake_devices: Collection[str] = (),
+) -> tuple[str, str | None]:
     """Which event a real press on this element would send, and why.
 
     **The panel decides this, not the server.** A touch on a toggle button
@@ -148,8 +152,11 @@ def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
     ``modules/press.js`` asks through its copy -- that is what lets
     ``toggle_value: true`` match a driver's boolean ``True``, or "on", which is
     how nearly every toggle in a real project is written. A reading that has
-    not arrived is off. ``tests/test_press_parity.py`` runs both over one
-    corpus and holds them to the same verdict.
+    not arrived is off, and so is one from a device that is away: the panel
+    presses a toggle the way its light is drawn, judged by
+    ``ui/reading_offline.py`` (``wake_devices`` are the devices the press
+    wakes, which keep their reading while asleep). ``tests/test_press_parity.py``
+    runs both over one corpus and holds them to the same verdict.
 
     Returns the event type plus a sentence explaining the choice, or None when
     the element is not a toggle and there was no choice to make.
@@ -158,6 +165,8 @@ def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
     if mode != "toggle":
         return "press", None
     key = action.get("toggle_key")
+    if state is not None and reading_offline(key, state, wake_devices):
+        return "press", _away_note(key, state)
     want = action.get("toggle_value")
     current = state.get(key) if state is not None else None
     active = same_value(current, want)
@@ -169,6 +178,15 @@ def resolve_press(element: Any, state: Any) -> tuple[str, str | None]:
     )
     return ("toggle_off" if active else "press"), why
 
+
+def _away_note(key: str, state: Any) -> str:
+    """Why a toggle whose device is away presses as off."""
+    device_id = reporting_device(key)
+    word = state.get(f"device.{device_id}.presence")
+    return (
+        f"toggle_key '{key}' reads from device '{device_id}', which is {word}, so the toggle "
+        f"reads as off and a press here reaches the toggled-on state -- dispatching the press action."
+    )
 
 def _destination_route(element: Any, output: Any) -> list[Any] | None:
     """The action list this matrix destination overrides ``do.route`` with.

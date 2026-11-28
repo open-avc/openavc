@@ -7,8 +7,10 @@
  *   hold_repeat -- `ui.press` at the press and again every interval while held
  *   tap_hold    -- nothing at the press; at the release `ui.hold` if it was
  *                  held for the threshold, else `ui.press`
- *   toggle      -- `ui.toggle_off` while the thing it toggles reads as on,
- *                  else `ui.press`; a toggle with no key is a tap
+ *   toggle      -- `ui.toggle_off` while the toggle's own light would be lit
+ *                  (modules/toggle.js `toggleLit`: its reading is its value
+ *                  and its device answers), else `ui.press`; a toggle with
+ *                  no key is a tap
  *
  * and `ui.release` at every release. The release cannot be missed: kiosk
  * WebViews and mobile browsers sometimes swallow the button's own touchend,
@@ -18,7 +20,8 @@
  * The rule worth knowing before changing anything here: the toggle's verdict
  * is copied on the server (`resolve_press` in core/ui_events.py), which
  * checks a toggle without pressing it, and tests/test_press_parity.py runs
- * both over one corpus. A change to `pressOf` or `frameAtPress` goes there too.
+ * both over one corpus, a device away and a device asleep included. A change
+ * to `pressOf` or `frameAtPress` goes there too.
  *
  * The hold timers are the panel's (`holdTimers`): a page change, a dialog
  * closing, the socket dropping and the panel going to the background each
@@ -33,7 +36,7 @@
  * finger or a palm neither moves it nor ends it.
  */
 
-import { sameValue } from './compare.js';
+import { toggleLit } from './toggle.js';
 
 /** The ends of a drag that let it go where it is: a pointer, a mouse (a fader starts on its mousedown) or a touch lifted. */
 const DRAG_LET_GO = ['pointerup', 'mouseup', 'touchend'];
@@ -186,20 +189,10 @@ function toggleLookOf(pressBinding, isList) {
 }
 
 /**
- * Whether a press of a toggle turns it off: the reading equals the toggle's
- * value (compare.js `sameValue`), so a driver's boolean `true` matches a
- * `toggle_value` of "true" or "on". A key nobody has reported, a null, or a
- * toggle with no value, reads as off. core/ui_events.py `resolve_press`
- * asks the server's copy of the same rule.
- */
-function toggleIsOn(stateValue, toggleValue) {
-    return sameValue(stateValue, toggleValue);
-}
-
-/**
  * Make `el` press the way `press` says, as the control `element` (its id is
- * read at each send). `host` lends the panel's send, its state, and its hold
- * timers.
+ * read at each send). `host` lends the panel's send, its state, whether a
+ * key's reading can be believed for this control (`readingOffline`), and its
+ * hold timers.
  */
 export function attachPress(el, element, press, host) {
     let pressTime = 0;
@@ -271,19 +264,22 @@ const frame = (type, element) => ({ type, element_id: element.id });
 
 /**
  * The frame a press sends at once, reading state through `read`: `ui.press`
- * for a tap and a hold-repeat, `ui.toggle_off` or `ui.press` for a toggle,
- * and null for a tap-or-hold (decided at the release) or a mode nobody knows.
+ * for a tap and a hold-repeat, null for a tap-or-hold (decided at the
+ * release) or a mode nobody knows, and for a toggle `ui.toggle_off` while it
+ * reads as on the way its light does (`toggleLit`), else `ui.press`.
+ * `offline(key)` says the key's reading cannot be believed (its device is
+ * away), so a toggle drawn off presses on whatever its device said last.
  */
-export function frameAtPress(press, read) {
+export function frameAtPress(press, read, offline = () => false) {
     if (press.mode === 'tap' || press.mode === 'hold_repeat') return 'ui.press';
     if (press.mode !== 'toggle') return null;
     const { toggle_key: key, toggle_value: value } = press.binding;
-    return toggleIsOn(read(key), value) ? 'ui.toggle_off' : 'ui.press';
+    return toggleLit({ value }, read(key), offline(key)) ? 'ui.toggle_off' : 'ui.press';
 }
 
 /** What the press sends, and a hold-repeat's timer started after it. */
 function sendAtPress(press, element, host) {
-    const type = frameAtPress(press, host.read);
+    const type = frameAtPress(press, host.read, (key) => host.readingOffline(element, key));
     if (type) host.send(frame(type, element));
     if (press.mode === 'hold_repeat') {
         host.repeat(element.id, press.repeatMs, () => host.send(frame('ui.press', element)));

@@ -3162,7 +3162,7 @@
     "wl": "mouseup touchend touchcancel blur",
     "s": [
      {
-      "type": "ui.toggle_off",
+      "type": "ui.press",
       "element_id": "w4"
      }
     ]

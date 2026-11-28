@@ -1498,13 +1498,15 @@ class PanelApp {
     }
 
     /** What a button's press borrows from the panel, each at call time: its
-     *  send, its state, and a hold timer that ends when it is let go or the
-     *  surface it was drawn on ends. */
+     *  send, its state, whether a key's reading can be believed for the
+     *  control (the judgment its light is drawn by), and a hold timer that
+     *  ends when it is let go or the surface it was drawn on ends. */
     _pressHost() {
         const surface = this._surfaces.drawing;
         return {
             send: (msg) => this.send(msg),
             read: (key) => this.state[key],
+            readingOffline: (elementDef, key) => this.availability.readingOffline({ elementDef, binding: { key } }),
             repeat: (elementId, ms, fn) => {
                 this._endHold(elementId);
                 this.holdTimers[elementId] = setInterval(fn, ms);

@@ -576,8 +576,9 @@ def test_resolve_press_agrees_with_that_rule() -> None:
         }]}}
 
     class _State:
+        """The toggle's key reads `value`; nothing else has been reported."""
         def __init__(self, value): self.value = value
-        def get(self, key, default=None): return self.value
+        def get(self, key, default=None): return self.value if key == "device.x.power" else default
 
     # A driver's boolean, a device that reports strings, and mixed case: all
     # three are the same toggle to the panel, so all three must be here.

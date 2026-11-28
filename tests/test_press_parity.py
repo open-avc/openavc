@@ -17,6 +17,13 @@ server, its copy `modules/compare.js` on the panel), so they reach the same
 verdict for every toggle value and reading below: a null on either side, and
 a whole number written with a decimal point (Python's 1.0, which JSON hands
 JavaScript as 1), included.
+
+A toggle presses the way its light is drawn, so a reading from a device that
+is away reads as off. The panel judges that with the light's own rule
+(`modules/availability.js` `readingOffline`), the server with its copy
+(`ui/reading_offline.py`), and the second corpus runs both: every presence
+word, a press that wakes the device or another one, and the platform's own
+keys, which keep telling the truth while the device is away.
 """
 
 from __future__ import annotations
@@ -57,19 +64,39 @@ SHAPED = [(kind, shape) for kind in TYPES for shape in SHAPES]
 TOGGLE_VALUES = ["on", "ON", True, False, 1, 0, "1", "true", "", None, "null", 1.0, _MISSING]
 READINGS = ["on", "On", "off", True, False, 1, 0, 1.0, "1", "1.0", "true", "True", "", None, "null", _MISSING]
 
+#: The keys a toggle can watch: one no device reports, a device's reading, a
+#: child's reading, and a platform key of each, which reports on the device
+#: rather than from it.
+AWAY_KEYS = ["var.t", "device.amp.mute", "device.amp.zone.1.mute", "device.amp.connected", "device.amp.zone.1.online"]
+#: What the device's presence word can read: no word yet, each word, and a
+#: value that is no word.
+PRESENCE = [_MISSING, "online", "offline", "asleep", "paused", "restarting", "connecting", "disabled",
+            "waiting_for_driver", 1]
+#: The devices the press wakes: none, the toggle's own, another one.
+WAKES = [(), ("amp",), ("tv",)]
+AWAY = [(key, word, wakes) for key in AWAY_KEYS for word in PRESENCE for wakes in WAKES]
+
 # The corpus goes in on stdin: on the command line it is past the length
 # Windows allows (WinError 206).
 _SCRIPT = """
 const press = await import(process.argv[1]);
+const { Availability } = await import(process.argv[2]);
 const { readFileSync } = await import('node:fs');
 const corpus = JSON.parse(readFileSync(0, 'utf8'));
-const out = { modes: [], toggles: [] };
+const out = { modes: [], toggles: [], away: [] };
 for (const { type, bindings } of corpus.shapes) {
     out.modes.push(press.pressOf({ type, bindings: { do: { press: bindings } } }).mode);
 }
 for (const { type, action, state } of corpus.toggles) {
     const p = press.pressOf({ type, bindings: { do: { press: [action] } } });
     out.toggles.push(press.frameAtPress(p, (key) => state[key]));
+}
+// The panel's press host: the light's judgment, for this control.
+for (const { action, state, wakes } of corpus.away) {
+    const element = { type: 'button', wake_devices: wakes, bindings: { do: { press: [action] } } };
+    const room = new Availability({ state: () => state, editMode: () => false, elementMap: () => ({}) });
+    const offline = (key) => room.readingOffline({ elementDef: element, binding: { key } });
+    out.away.push(press.frameAtPress(press.pressOf(element), (key) => state[key], offline));
 }
 console.log(JSON.stringify(out));
 """
@@ -89,6 +116,18 @@ def _state(reading: object) -> dict:
 TOGGLES = [(kind, value, reading) for kind in TYPES for value in TOGGLE_VALUES for reading in READINGS]
 
 
+def _away_action(key: str) -> dict:
+    """A toggle that reads as on: its key reads its value."""
+    return {**_MACRO, "mode": "toggle", "toggle_key": key, "toggle_value": True}
+
+
+def _away_state(key: str, word: object) -> dict:
+    state = {key: True}
+    if word is not _MISSING:
+        state["device.amp.presence"] = word
+    return state
+
+
 @pytest.fixture(scope="module")
 def panel_answers() -> dict:
     if shutil.which("node") is None:
@@ -96,9 +135,11 @@ def panel_answers() -> dict:
     corpus = json.dumps({
         "shapes": [{"type": kind, "bindings": shape} for kind, shape in SHAPED],
         "toggles": [{"type": k, "action": _toggle_action(v), "state": _state(r)} for k, v, r in TOGGLES],
+        "away": [{"action": _away_action(k), "state": _away_state(k, w), "wakes": list(wakes)} for k, w, wakes in AWAY],
     })
     proc = subprocess.run(
-        ["node", "--input-type=module", "-e", _SCRIPT, (PANEL_MODULES / "press.js").as_uri()],
+        ["node", "--input-type=module", "-e", _SCRIPT, (PANEL_MODULES / "press.js").as_uri(),
+         (PANEL_MODULES / "availability.js").as_uri()],
         input=corpus, capture_output=True, text=True, timeout=60,
     )
     assert proc.returncode == 0, proc.stderr
@@ -145,3 +186,35 @@ def test_a_camera_preset_is_a_tap_on_both_sides(panel_answers: dict) -> None:
     assert modes == {"tap"}
     on = _element([_toggle_action("on")], "camera_preset")
     assert resolve_press(on, _State({"var.t": "on"})) == ("press", None)
+
+
+def test_a_toggle_whose_device_is_away_reads_as_off_on_both_sides(panel_answers: dict) -> None:
+    differ = []
+    for (key, word, wakes), got in zip(AWAY, panel_answers["away"], strict=True):
+        element = _element([_away_action(key)])
+        event, _why = resolve_press(element, _State(_away_state(key, word)), wakes)
+        if got != f"ui.{event}":
+            differ.append((key, word, wakes))
+    assert not differ, f"the panel and the server disagree on these toggles: {differ}"
+
+
+def test_the_away_corpus_reaches_both_verdicts(panel_answers: dict) -> None:
+    """Every case reads as on unless its device is away, so each verdict
+    below is the away rule's, and agreeing on the wrong one fails here."""
+    verdict = dict(zip(AWAY, panel_answers["away"], strict=True))
+    assert verdict[("device.amp.mute", "online", ())] == "ui.toggle_off"
+    assert verdict[("device.amp.mute", _MISSING, ())] == "ui.toggle_off", "no word yet draws normally"
+    assert verdict[("device.amp.mute", "offline", ())] == "ui.press", "away reads as off"
+    assert verdict[("device.amp.zone.1.mute", "offline", ())] == "ui.press", "a child reads from its device"
+    assert verdict[("device.amp.connected", "offline", ())] == "ui.toggle_off", "a platform key stays true"
+    assert verdict[("device.amp.zone.1.online", "offline", ())] == "ui.toggle_off", "a child's own key stays true"
+    assert verdict[("device.amp.mute", "asleep", ("amp",))] == "ui.toggle_off", "a press that wakes it keeps its reading"
+    assert verdict[("device.amp.mute", "asleep", ("tv",))] == "ui.press", "waking another device keeps nothing"
+    assert verdict[("device.amp.mute", "paused", ("amp",))] == "ui.press", "only a sleep keeps a wake press's reading"
+
+
+def test_a_toggle_whose_device_is_away_says_so() -> None:
+    element = _element([_away_action("device.amp.mute")])
+    event, why = resolve_press(element, _State({"device.amp.mute": True, "device.amp.presence": "offline"}))
+    assert event == "press"
+    assert "device 'amp', which is offline" in why and "reads as off" in why, why
