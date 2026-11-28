@@ -581,7 +581,7 @@ def test_osc_rule_tuple_carries_every_slot_in_order():
     assert compiled.osc_responses == [
         (
             "/unit/7/power",
-            [{"state": "volume", "arg": 0, "convert": {"scale": 0.5}}],
+            [{"state": "volume", "arg": 0, "type": "integer", "convert": {"scale": 0.5}}],
             [],
             {"window": 2.0, "last": {}},
             {"key": "power", "equals": True},
@@ -684,8 +684,8 @@ def test_conversions_attach_to_every_table_and_skip_final_values():
     ]
     osc = compiled.osc_responses[0]
     assert osc[1] == [
-        {"state": "volume", "arg": 0, "convert": {"scale": 0.5}},
-        {"state": "volume", "value": 3},
+        {"state": "volume", "arg": 0, "type": "integer", "convert": {"scale": 0.5}},
+        {"state": "volume", "value": 3, "type": "integer"},
     ]
     assert osc[2][0]["props"] == [
         {"prop": "level", "type": "integer", "arg": 0, "convert": {"offset": -10, "unknown": [255]}},

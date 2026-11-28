@@ -336,7 +336,7 @@ def test_compile_driver_builds_all_three_tables():
 
     addr, osc_mappings, _osc_children, _throttle, _osc_gate = compiled.osc_responses[0]
     assert addr == "/dev/A/level"
-    assert osc_mappings == [{"arg": 0, "state": "volume"}]
+    assert osc_mappings == [{"arg": 0, "state": "volume", "type": "integer"}]
 
     (
         json_mappings, _throttle2, require, _json_gate, json_children,

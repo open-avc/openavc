@@ -2592,7 +2592,7 @@ responses:
           "1": "false"
 ```
 
-Responses use `address` instead of `match`/`pattern`, and `arg` (argument index) instead of `group` (regex capture group). Address patterns support `*` wildcards (e.g., `/ch/*/mix/fader`).
+Responses use `address` instead of `match`/`pattern`, and `arg` (argument index) instead of `group` (regex capture group). Address patterns support `*` wildcards (e.g., `/ch/*/mix/fader`). A mapping with no `type` takes its state variable's declared type, as on a text rule, so an integer variable stores the number a device sends rather than its text.
 
 #### OSC on_connect and Polling
 

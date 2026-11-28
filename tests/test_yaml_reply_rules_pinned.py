@@ -536,8 +536,8 @@ async def test_a_held_osc_rule_consumes_the_message_inside_its_window():
     ]))
     await driver.on_data_received(osc_encode_message("/acme/level", [("i", 1)]))
     await driver.on_data_received(osc_encode_message("/acme/level", [("i", 2)]))
-    # An OSC mapping with no type of its own reads as text.
-    assert driver.get_state("level") == "1"
+    # An OSC mapping with no type of its own takes its variable's.
+    assert driver.get_state("level") == 1
     assert driver.get_state("label") is None
     assert driver._parsed_messages == 2
     driver._drop_all_held()

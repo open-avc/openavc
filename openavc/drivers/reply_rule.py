@@ -15,7 +15,8 @@ takes as written.
   otherwise, with each capture reference read as a number (``capture_ref``).
   A json rule reads its ``mappings:`` entries, or its ``set:`` items when it
   has none, as value specs (``json_value_spec``). An OSC rule's
-  ``mappings:`` are as written: each names a message argument, not a capture.
+  ``mappings:`` each name a message argument, not a capture; each is typed
+  by its state variable unless it says otherwise, as a regex rule's is.
 * ``skipped``: what a regex rule names that no reader writes, a reference
   that names no capture, with the words a reader that logs says.
 * ``require``, ``condition``, ``follow_ups``, ``after_json``: a json rule's
@@ -92,7 +93,7 @@ def read_reply_rule(rule: Mapping[str, Any], state_variables: Any = None) -> Rep
     form = rule_form(rule)
     skipped: tuple[SkippedMapping, ...] = ()
     if form == OSC:
-        mappings = tuple(listed_mappings(rule))
+        mappings = tuple(_typed_mapping(mp, state_vars) for mp in listed_mappings(rule))
     elif form == JSON:
         mappings = tuple(_json_rule_mappings(rule, state_vars))
     else:
@@ -275,11 +276,13 @@ def _listed_mapping(mp: Any, state_vars: Mapping[str, Any]) -> Any:
 
 def _typed_mapping(mp: Any, state_vars: Mapping[str, Any]) -> Any:
     """A ``mappings:`` entry with no ``type:``, given its state variable's
-    declared type; anything else as written.
+    declared type; anything else as written. A regex rule's entries and an
+    OSC rule's both take it.
 
     Without it an explicit entry took the string default even when the
     variable declares integer/boolean, so a trigger comparing it to a number
-    never fired (``set:`` has always inferred the declared type). Copied rather
+    never fired (``set:`` has always inferred the declared type), and an OSC
+    argument stored a number as its text ("2.0"). Copied rather
     than filled in place: the entry belongs to the loaded driver definition,
     shared with every other device on the driver."""
     if not isinstance(mp, dict) or "type" in mp or not mp.get("state"):

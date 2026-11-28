@@ -116,6 +116,43 @@ def test_an_osc_rule_keeps_its_mappings_as_written_and_ignores_set():
     assert read.mappings[0] is entry
 
 
+def test_an_osc_mapping_with_no_type_takes_its_variables_type():
+    untyped = {"state": "level", "arg": 0}
+    typed = {"state": "mode", "arg": 1, "type": "integer"}
+    undeclared = {"state": "other", "arg": 2}
+    rule = {"address": "/acme/level", "mappings": [untyped, typed, undeclared]}
+    read = read_reply_rule(rule, _STATE_VARS)
+    assert read.mappings == (
+        {"state": "level", "arg": 0, "type": "integer"},
+        typed,
+        undeclared,
+    )
+    # The definition's own entry is shared by every device on the driver.
+    assert untyped == {"state": "level", "arg": 0}
+
+
+@pytest.mark.parametrize("arg", [("i", 2), ("f", 2.0), ("s", "2")])
+def test_the_driver_stores_an_untyped_osc_argument_as_its_variables_type(arg):
+    definition = {
+        "id": "acme_mixer", "name": "Acme Mixer", "manufacturer": "Acme",
+        "category": "audio", "version": "1.0.0", "transport": "osc",
+        "default_config": {"host": "", "port": 10023},
+        "state_variables": {"level": {"type": "integer"}, "mode": {"type": "string"}},
+        "commands": {},
+        "responses": [{"address": "/acme/level", "mappings": [
+            {"arg": 0, "state": "level"}, {"arg": 1, "state": "mode"},
+        ]}],
+    }
+    state = StateStore()
+    events = EventBus()
+    state.set_event_bus(events)
+    driver = create_configurable_driver_class(definition)("m1", {"host": "127.0.0.1", "port": 10023}, state, events)
+    assert driver._apply_osc_message("/acme/level", [arg, ("s", "hdmi")])
+    assert driver.get_state("level") == 2
+    assert isinstance(driver.get_state("level"), int)
+    assert driver.get_state("mode") == "hdmi"
+
+
 def test_the_model_holds_each_rule_in_file_order_and_skips_what_is_not_a_rule():
     responses = [{"match": "A"}, "not a rule", {"address": "/b"}, {"json": True}]
     model = read_driver({"responses": responses, "state_variables": _STATE_VARS})
