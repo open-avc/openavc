@@ -27,6 +27,7 @@ import {
   declaredStateType,
   getJsonRows,
   getMappings,
+  mappingType,
   getPattern,
   containsFromText,
   containsToText,
@@ -601,7 +602,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 ))}
               </select>
               <select
-                value={mapping.type ?? "string"}
+                value={mappingType(mapping, stateVars)}
                 onChange={(e) => {
                   const next = [...mappings];
                   next[mi] = { ...mapping, type: e.target.value };
@@ -612,6 +613,7 @@ export function ResponseBuilder({ draft, onUpdate }: ResponseBuilderProps) {
                 <option value="string">String</option>
                 <option value="integer">Integer</option>
                 <option value="float">Float</option>
+                <option value="number">Number</option>
                 <option value="boolean">Boolean</option>
               </select>
               <input

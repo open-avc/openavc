@@ -29,6 +29,21 @@ export function declaredStateType(
   return stateVariables[stateKey]?.type ?? "string";
 }
 
+/** The types a reply mapping's Type picker offers. */
+export const MAPPING_TYPES = ["string", "integer", "float", "number", "boolean"] as const;
+
+/** The type the driver reads a text or OSC rule's row by (reply_rule.py):
+ *  its own `type`, else its state variable's declared type. One the picker
+ *  does not offer (an enum variable's, or a hand-written name) is read as
+ *  text, so it shows as String. */
+export function mappingType(
+  mapping: DriverResponseMapping,
+  stateVariables: Record<string, StateVarDefLike | undefined>,
+): string {
+  const type = mapping.type ?? declaredStateType(stateVariables, mapping.state ?? "");
+  return (MAPPING_TYPES as readonly string[]).includes(type) ? type : "string";
+}
+
 /** Read the pattern from whichever key is present. */
 export function getPattern(resp: DriverResponseDef): string {
   return resp.address ?? resp.match ?? "";

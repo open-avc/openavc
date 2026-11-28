@@ -112,6 +112,25 @@ const results = {};
   };
 }
 {
+  // A row with no type shows the type the driver reads it by: its state
+  // variable's declared type, on a text rule and an OSC rule alike; its own
+  // type when it names one; String for a type the picker does not offer.
+  const vars = { level: { type: "integer" }, gain: { type: "number" }, mode: { type: "enum" } };
+  const got = [
+    H.mappingType({ group: 1, state: "level" }, vars),
+    H.mappingType({ arg: 0, state: "level" }, vars),
+    H.mappingType({ arg: 0, state: "gain" }, vars),
+    H.mappingType({ arg: 0, state: "level", type: "float" }, vars),
+    H.mappingType({ arg: 0, state: "mode" }, vars),
+    H.mappingType({ arg: 0, state: "other" }, vars),
+    H.mappingType({ arg: 0, state: "level", type: "double" }, vars),
+  ];
+  results.untyped_row_shows_the_type_the_driver_reads = {
+    pass: eq(got, ["integer", "integer", "number", "float", "string", "string", "string"]),
+    detail: got,
+  };
+}
+{
   // Undeclared state variables fall back to "string", like the runtime.
   const got = H.getMappings({ match: "X(\\d)", set: { foo: "$1" } }, {});
   results.set_undeclared_defaults_string = {

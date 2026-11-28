@@ -85,6 +85,7 @@ SCENARIOS = [
     "add_entry_guards_pending_draft",
     "set_capture_shows_declared_type",
     "set_static_shows_declared_type",
+    "untyped_row_shows_the_type_the_driver_reads",
     "set_undeclared_defaults_string",
     "set_roundtrip_keeps_shorthand",
     "static_type_choice_survives_save",
