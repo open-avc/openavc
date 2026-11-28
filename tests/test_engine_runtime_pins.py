@@ -547,6 +547,12 @@ async def test_the_cloud_agent_is_wired_to_every_part_and_connects(tmp_path, mon
         getattr(agent, setter).assert_called_once()
     agent.set_help_requests.assert_called_once_with(eng.help)
     agent.connect.assert_awaited_once()
+    # The alert monitor asks the device manager how long a device has been
+    # paused: without it a pause never outlasts its hour on purpose.
+    (monitor,), _ = agent.set_alert_monitor.call_args
+    assert monitor._quiet.pause_of("projector") is None
+    eng.devices._pause_since["projector"] = 1.0
+    assert monitor._quiet.pause_of("projector").since == 1.0
 
 
 @pytest.mark.asyncio
