@@ -222,9 +222,9 @@ def _position(mapping: Mapping[str, Any]) -> int | None:
     """The argument a mapping reads (0 when it names none); None for one that
     is not a whole number from 0, which the strict check refuses."""
     arg = mapping.get("arg", 0)
-    if isinstance(arg, int) and not isinstance(arg, bool) and arg >= 0:
-        return arg
-    return None
+    if isinstance(arg, bool) or not isinstance(arg, int):
+        return None
+    return arg if arg >= 0 else None
 
 
 def _address_arg(mapping: Any) -> AddressArg | None:
