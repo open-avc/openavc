@@ -22,6 +22,14 @@ export type PageType = (typeof PAGE_RULES.page_types)[number];
  *  overlay on top, nothing else. Moves, never page ids. */
 export const { back: BACK, dismiss: DISMISS } = PAGE_RULES.navigation_words;
 
+const NAVIGATION_WORDS: readonly unknown[] = Object.values(PAGE_RULES.navigation_words);
+
+/** Whether a navigation `target` is a page to go to: it is set, and is not
+ *  one of the panel's own moves, which name no page. */
+export function isPageTarget(target: unknown): boolean {
+  return Boolean(target) && !NAVIGATION_WORDS.includes(target);
+}
+
 const PAGE_TYPES: readonly unknown[] = PAGE_RULES.page_types;
 const OPENS_OVER: readonly PageType[] = PAGE_RULES.opens_over;
 

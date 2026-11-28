@@ -16,6 +16,7 @@
 import { useEffect } from "react";
 import type { MasterElement, ProjectConfig, UIPage } from "../../api/types";
 import * as wsClient from "../../api/wsClient";
+import { isPageTarget } from "../../components/shared/pageType";
 import { lockedIdsFor, resolveHidden } from "../../components/ui-builder/uiBuilderHelpers";
 import { useNavigationStore } from "../../store/navigationStore";
 import { useUIBuilderStore } from "../../store/uiBuilderStore";
@@ -66,10 +67,11 @@ function goToPointedAt() {
   requestAnimationFrame(() => store().selectElement(focus.id));
 }
 
-/** The server's page change, which preview follows. */
+/** The server's page change, which preview follows. A back or close is the
+ *  panel's own move in the Preview and names no page to select. */
 function followServerPage() {
   return wsClient.onMessage((msg: Record<string, unknown>) => {
-    if (msg.type === "ui.navigate" && msg.page_id) store().selectPage(String(msg.page_id));
+    if (msg.type === "ui.navigate" && isPageTarget(msg.page_id)) store().selectPage(String(msg.page_id));
   });
 }
 

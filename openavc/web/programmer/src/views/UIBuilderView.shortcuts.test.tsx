@@ -407,6 +407,15 @@ describe("the page's own listeners", () => {
     expect(ws.unsubscribed).toBe(1);
   });
 
+  it("stays on its page when the server's move is the panel's own back or close", async () => {
+    await renderPage(UIBuilderView);
+    press("p", { ctrl: true });
+    call(() => ws.listeners[0]({ type: "ui.navigate", page_id: "other" }));
+    call(() => ws.listeners[0]({ type: "ui.navigate", page_id: "$back" }));
+    call(() => ws.listeners[0]({ type: "ui.navigate", page_id: "$dismiss" }));
+    expect(builder().selectedPageId).toBe("other");
+  });
+
   it("selects the first page when none is", async () => {
     await renderPage(UIBuilderView);
     expect(builder().selectedPageId).toBe("main");
