@@ -1086,6 +1086,10 @@ export function promoteToMaster(
  * the screen, so the box it comes back with is the page's, the one a landscape
  * arrangement draws it at (`masterPlacement`, its fallbacks included, else the
  * default box), written into the page's primary arrangement.
+ *
+ * Of two masters sharing the id, the first comes back (the one a press
+ * reaches) and only it leaves the masters: the other keeps its own bindings
+ * and boxes, and the id, so the control put back takes a free one.
  */
 export function demoteFromMaster(
   pages: UIPage[],
@@ -1093,10 +1097,11 @@ export function demoteFromMaster(
   masterElementId: string,
   targetPageId: string,
 ): { pages: UIPage[]; masterElements: MasterElement[] } {
-  const masterEl = masterElements.find(m => m.id === masterElementId);
-  if (!masterEl) return { pages, masterElements };
+  const at = masterElements.findIndex(m => m.id === masterElementId);
+  if (at < 0) return { pages, masterElements };
 
-  const newMasters = masterElements.filter(m => m.id !== masterElementId);
+  const masterEl = masterElements[at];
+  const newMasters = masterElements.filter((_m, i) => i !== at);
   const { pages: _pagesField, placements: _placements, hidden: _hidden, parent: _parent, ...elementFields } = masterEl;
   const box = masterPlacement(masterEl, "landscape") ?? { ...DEFAULT_PLACEMENT };
   const demoted = underFreeId(elementFields as UIElement, takenElementIds(pages, newMasters.map((m) => m.id)));

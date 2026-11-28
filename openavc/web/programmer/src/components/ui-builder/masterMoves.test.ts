@@ -218,11 +218,13 @@ describe("demoteFromMaster: the box a control comes back with", () => {
     expect(out.pages[0].elements[0].id).toBe("slider_1");
   });
 
-  it("drops every master sharing the id, and puts back the first", () => {
-    const masters = [master("m", undefined, { label: "first" }), master("m", undefined, { label: "second" }), master("n")];
+  it("puts back the first of two masters sharing the id and leaves the other a master", () => {
+    const second = master("m", { landscape: box(9, 9, 9, 9) }, { label: "second" });
+    const masters = [master("m", undefined, { label: "first" }), second, master("n")];
     const out = demoteFromMaster([target()], masters, "m", "pg");
-    expect(out.masterElements.map((m) => m.id)).toEqual(["n"]);
-    expect(out.pages[0].elements).toEqual([{ id: "m", type: "button", bindings: {}, label: "first" }]);
+    expect(out.masterElements).toEqual([second, masters[2]]);
+    // The master left behind still holds the id, so the control put back takes a free one.
+    expect(out.pages[0].elements).toEqual([{ id: "button_1", type: "button", bindings: {}, label: "first" }]);
   });
 
   it("hands back the same pages and masters when the master is not there", () => {
