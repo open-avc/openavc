@@ -12,7 +12,9 @@ holds against values the map writes, so the reading is exact; a reading off
 the wire is picked by ``compiled_protocol.map_entry``. Then the
 templates of every rule that writes the variable, each rendered in each form
 the value can take (``wire_forms``), and the first rendering whose own rule
-reads the value back is the one sent (``first_read_back``). A reply carries the
+reads the value back is the one sent (``first_read_back``). When no rendering
+reads back, or the variable has no template, there is no reply: the simulator
+sends nothing rather than a line its own driver ignores. A reply carries the
 device's own number: the variable's scale / offset / unknown is applied on the
 way out.
 
@@ -53,7 +55,7 @@ def wire_forms(value: Any, conversion: dict | None) -> list[Any]:
     and ``1``. A rule written for the device's lowercase ``(true|false)``
     never reads back ``True``, so a change pushed from the Simulator UI was
     dropped by the driver. first_read_back takes the first form the rule
-    reads back; with none, the first (today's) rendering still goes out."""
+    reads back."""
     wire = value_to_wire(value, conversion)
     if not isinstance(value, bool):
         return [wire]
@@ -68,32 +70,31 @@ def value_text(template: str, wire: Any) -> str:
     return str(wire) if text is None else text
 
 
-def first_read_back(lines: list[tuple[str, str, ReadBack]]) -> str:
-    """The first rendering whose own rule reads the value back, else the first.
+def first_read_back(lines: list[tuple[str, str, ReadBack]]) -> str | None:
+    """The first rendering whose own rule reads the value back, else None.
 
     A rule that matches the line but captures something other than exactly
     the rendered value in the value's group is not enough: it would hand the
-    driver a different value from the one the simulator holds. A first
-    rendering with no rule is sent as it is; a later one is passed over."""
-    for index, (line, text, rule) in enumerate(lines):
+    driver a different value from the one the simulator holds. A rendering
+    with no rule (its pattern does not compile) reads nothing back."""
+    for line, text, rule in lines:
         if rule is None:
-            if index == 0:
-                return line
             continue
         pattern, group = rule
         match = pattern.search(line)
         if match and match.group(group) == text:
             return line
-    return lines[0][0]
+    return None
 
 
 def render_first(
     templates: list[tuple[str, ReadBack, dict[str, Any]]],
     value: Any,
     conversion: dict | None,
-) -> str:
+) -> str | None:
     """``value`` rendered through each ``(template, rule, other slots)`` in
-    each of its wire forms, the first rendering its rule reads back."""
+    each of its wire forms, the first rendering its rule reads back; None
+    when none does."""
     return first_read_back([
         (fill_template(template, {**slots, "value": wire}), value_text(template, wire), rule)
         for template, rule, slots in templates
@@ -145,9 +146,10 @@ class StateResponse(_RuleTemplates):
         (template, rule)."""
         self._keep(template, rule)
 
-    def format(self, value: Any) -> str:
+    def format(self, value: Any) -> str | None:
         """The reply text for ``value``: its value map entry, else its
-        templates' first rendering read back, else the bare wire value."""
+        templates' first rendering read back; None when neither gives one
+        (a bare value is a line no rule reads)."""
         reply = self.value_map.get(value_words(value))
         if reply is not None:
             return reply
@@ -156,7 +158,7 @@ class StateResponse(_RuleTemplates):
                 (template, rule, {})
                 for template, rule in ((self.template, self.template_rule), *self.alternates)
             ], value, self.conversion)
-        return str(value_to_wire(value, self.conversion))
+        return None
 
 
 class ChildStateResponse(_RuleTemplates):
@@ -187,8 +189,7 @@ class ChildStateResponse(_RuleTemplates):
 
     def format(self, child_id: str, value: Any) -> str | None:
         """Reply text for this child/value, or None when nothing derivable
-        represents the value (unlike flat replies, a bare value with no id
-        slot would be garbage on the wire)."""
+        represents the value or no rendering reads back."""
         reply = self.value_map.get(value_words(value))
         if reply is not None:
             return fill_template(
@@ -223,7 +224,9 @@ class ChildListAnswer:
     id_wire_map: dict[str, str] | None  # local id -> wire id
     conversion: dict | None
 
-    def render_item(self, child_id: str, value: Any) -> str:
+    def render_item(self, child_id: str, value: Any) -> str | None:
+        """One child's item, or None when its rendering does not read back
+        (the caller then has no list to send)."""
         wire_id = _wire_id(child_id, self.id_wire_map)
         if self.value_words is not None:
             word = self.value_words.get(value_words(value))

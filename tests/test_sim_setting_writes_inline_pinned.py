@@ -187,8 +187,9 @@ def test_an_http_settings_write_is_answered_through_the_command_chain(line, stat
 
 
 # The setting's word read back to the setting value, stored in a text
-# variable as its text, and reported by the response rule as stored.
-MAPPED_WRITE = ("true", b"P true\r")
+# variable as its text. The response rule reads only ON or OFF, so the
+# stored text has no reply: "P true" is a line the driver would ignore.
+MAPPED_WRITE = ("true", None)
 
 
 def test_a_mapped_setting_write_lands_as_its_value_and_reports_back_in_the_word():

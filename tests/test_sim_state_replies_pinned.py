@@ -4,7 +4,9 @@ The reply (or push) text for a flat state variable, for one child's variable,
 and for a variable a ``child_list`` rule spreads across children: the value
 map, the templates every rule that writes the variable gives, the first one
 whose own rule reads the value back, the device's own numbers, and the forms a
-boolean can take. Recorded from the code as it is, on an invented device.
+boolean can take. A value no rule would read back has no reply at all: the
+simulator sends nothing rather than a line its own driver ignores. Recorded
+from the code as it is, on an invented device.
 """
 
 from __future__ import annotations
@@ -49,17 +51,33 @@ def test_a_value_map_entry_wins_and_a_boolean_reads_lowercase():
     assert sim._format_state_reply("mute", False) == "MUTE0"
 
 
-def test_with_no_template_a_value_the_map_lacks_goes_out_as_its_wire_form():
+def test_with_no_template_a_value_the_map_lacks_has_no_reply():
     sim = _sim(
         state_variables={"level": {"type": "integer", "scale": 2}},
         responses=[{"match": "LVLMAX", "set": {"level": 100}}],
     )
     assert sim._state_responses["level"].value_map == {"100": "LVLMAX"}
     assert sim._format_state_reply("level", 100) == "LVLMAX"
-    # 7 is no map key: the fallback writes the device's own number (7 / 2,
-    # rounded for an integer variable)
-    assert sim._format_state_reply("level", 7) == "4"
-    assert sim._format_state_reply("level", "x") == "x"
+    # 7 is no map key, and the bare number is a line no rule reads
+    assert sim._format_state_reply("level", 7) is None
+    assert sim._format_state_reply("level", "x") is None
+
+
+def test_a_variable_whose_only_rule_the_walk_refuses_has_no_reply():
+    sim = _sim(
+        state_variables={"power": {"type": "integer"}},
+        responses=[{"match": r"(?x) PWR = (\d)", "set": {"power": "$1"}}],
+    )
+    assert sim._state_responses["power"].template is None
+    assert sim._format_state_reply("power", 1) is None
+
+
+def test_a_class_escape_reply_is_the_line_the_driver_reads():
+    sim = _sim(
+        state_variables={"power": {"type": "integer"}},
+        responses=[{"match": r"PWR[\x3D](\d)", "set": {"power": "$1"}}],
+    )
+    assert sim._format_state_reply("power", 1) == "PWR=1"
 
 
 def test_the_first_rule_that_reads_the_value_back_is_the_one_sent():
@@ -75,8 +93,8 @@ def test_the_first_rule_that_reads_the_value_back_is_the_one_sent():
     assert [t for t, _rule in sr.alternates] == ["RT {value:05d}"]
     assert sim._format_state_reply("runtime", 65533) == "RT 65533"
     assert sim._format_state_reply("runtime", 400) == "RT 00400"
-    # read back by neither rule: the first rendering, as written
-    assert sim._format_state_reply("runtime", 1234567) == "RT 1234567"
+    # read back by neither rule: no reply
+    assert sim._format_state_reply("runtime", 1234567) is None
 
 
 def test_a_boolean_goes_out_in_the_first_form_its_rule_reads():
@@ -121,7 +139,20 @@ def test_a_mapped_group_is_reversed_into_one_reply_per_value():
     assert sr.value_map == {"hdmi": "IN 1", "vga": "IN 2"}
     assert sr.template == "IN {value}"
     assert sim._format_state_reply("input", "vga") == "IN 2"
-    assert sim._format_state_reply("input", "other") == "IN other"
+    assert sim._format_state_reply("input", "other") is None
+
+
+def test_a_mapped_token_the_pattern_cannot_read_files_no_reply():
+    sim = _sim(
+        state_variables={"input": {"type": "enum", "values": ["hdmi", "vga"]}},
+        responses=[{
+            "match": r"IN (\d+)",
+            "mappings": [{"state": "input", "group": 1, "map": {"1": "hdmi", "V": "vga"}}],
+        }],
+    )
+    sr = sim._state_responses["input"]
+    assert sr.value_map == {"hdmi": "IN 1"}
+    assert sim._format_state_reply("input", "vga") is None
 
 
 def test_an_unknown_key_has_no_reply_and_a_script_reply_reads_state():
@@ -144,20 +175,17 @@ def test_first_read_back_takes_the_first_line_its_rule_reads_exactly():
     assert _first_read_back(lines) == "V2"
 
 
-def test_first_read_back_with_no_reader_sends_the_first_line():
+def test_first_read_back_with_no_reader_sends_nothing():
     rule = (re.compile(r"V(\d+)"), 1)
-    assert _first_read_back([("A", "1", rule), ("B", "2", rule)]) == "A"
+    assert _first_read_back([("A", "1", rule), ("B", "2", rule)]) is None
+    assert _first_read_back([]) is None
 
 
-def test_first_read_back_a_first_line_with_no_rule_is_sent_at_once():
+def test_first_read_back_a_line_with_no_rule_is_never_sent():
     rule = (re.compile(r"V(\d+)"), 1)
-    assert _first_read_back([("X", "1", None), ("V1", "1", rule)]) == "X"
-
-
-def test_first_read_back_a_later_line_with_no_rule_is_skipped():
-    rule = (re.compile(r"V(\d+)"), 1)
+    assert _first_read_back([("X", "1", None), ("V1", "1", rule)]) == "V1"
     assert _first_read_back([("Q", "9", rule), ("X", "1", None), ("V1", "1", rule)]) == "V1"
-    assert _first_read_back([("Q", "9", rule), ("X", "1", None)]) == "Q"
+    assert _first_read_back([("Q", "9", rule), ("X", "1", None)]) is None
 
 
 @pytest.mark.parametrize(
@@ -219,6 +247,15 @@ def test_a_child_id_map_puts_the_device_id_back_on_the_wire():
     assert sr.id_wire_map == {"1": "0", "2": "1"}
     assert sr.format("2", True) == "O1 M1"
     assert sr.format("3", False) == "O3 M0"
+
+
+def test_a_child_value_its_rule_cannot_read_is_none():
+    sim = _matrix(responses=[{
+        "match": r"Out(\d+) In(\d+) Vid",
+        "child_set": [{"type": "output", "id": "$1", "state": {"input": "$2"}}],
+    }])
+    assert sim._format_state_reply("output.2.input", 5) == "Out2 In5 Vid"
+    assert sim._format_state_reply("output.2.input", "hdmi") is None
 
 
 def test_a_child_value_nothing_represents_is_none():
@@ -285,11 +322,28 @@ def test_a_list_item_names_its_child_and_uses_the_device_word():
     assert answer.value_words == {"true": "on", "false": "off"}
     assert answer.id_wire_map == {"1": "0", "2": "1", "3": "2"}
     assert answer.render_item("2", True) == "on>1"
-    assert answer.render_item("9", "maybe") == "maybe>9"
+    assert answer.render_item("9", "maybe") is None
     sim._state["output.2.mute"] = True
     assert sim.handle_command(b"LIST") == sim.handle_command(b"LIST")
     reply = sim.handle_command(b"LIST")
     assert reply == b"Vgp0*Out0 off>0,on>1,off>2Vid\r"
+
+
+def test_a_list_with_an_item_no_rule_reads_has_no_reply():
+    sim = _matrix(
+        responses=[{
+            "match": r"Vgp0\*Out(\d+) (.*)Vid",
+            "child_list": {"type": "output", "element": r"(\d+)",
+                           "state": {"level": "$1"}, "separator": " ", "group": "$2",
+                           "start": "$1"},
+        }],
+        polling={"queries": [{"send": "LVLS", "query_for": "output.level"}]},
+    )
+    assert sim.handle_command(b"LVLS") == b"Vgp0*Out1 0 0 0Vid\r"
+    # the second child's value is no number: an item dropped would shift
+    # every child after it by one place, so the list goes unanswered
+    sim._state["output.2.level"] = "high"
+    assert sim.handle_command(b"LVLS") is None
 
 
 def test_a_list_by_place_renders_each_value_in_the_device_numbers():

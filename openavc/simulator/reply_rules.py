@@ -57,7 +57,9 @@ from openavc.simulator.state_replies import (
     ChildListAnswer,
     ChildStateResponse,
     StateResponse,
+    first_read_back,
     rule_pattern,
+    value_text,
 )
 
 ChildVars = Callable[[str], dict]
@@ -204,16 +206,20 @@ class _FlatRule:
         """A mapping's ``map:`` stores the friendly value in state (the wire
         token -> the friendly word), so the template would put the friendly
         word on the wire: file each friendly value under the reply with its
-        wire token in the mapping's capture instead."""
+        wire token in the mapping's capture instead, when the rule reads that
+        token back (a token its capture cannot take gives no reply)."""
         group = _slot(capture_group(mapping.get("group")))
         template = emit_template(self.pattern, group) if group else None
         sr = tables.get(str(mapping["state"])) if template else None
         if sr is None:
             return
+        rule = rule_pattern(self.pattern, group)
         for raw, friendly in mapping["map"].items():
-            sr.value_map.setdefault(
-                value_words(friendly), fill_template(template, {"value": raw})
-            )
+            reply = first_read_back([
+                (fill_template(template, {"value": raw}), value_text(template, raw), rule)
+            ])
+            if reply is not None:
+                sr.value_map.setdefault(value_words(friendly), reply)
 
 
 # ── child variables ──

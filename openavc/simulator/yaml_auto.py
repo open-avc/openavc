@@ -1300,7 +1300,9 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         """Answer a list read with every child it covers (its handler's
         ``covers``), from each child's own state; a child the roster lacks
         reads as its variable's default, the way a device lists outputs
-        nobody configured."""
+        nobody configured. An item no rule reads back is left out of a list
+        whose items name their child; a list read by place has no answer
+        then, since every later child would move up a place."""
         answer = self._child_list_answers.get((handler.child_type, handler.response_var))
         if answer is None:
             return None
@@ -1313,7 +1315,13 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         for cid in ids:
             key = f"{ctype}.{cid}.{var}"
             value = self._state[key] if key in self._state else state_var_default(var_def)
-            items.append(answer.render_item(cid, value))
+            item = answer.render_item(cid, value)
+            if item is None and answer.by_place:
+                return None  # a hole would move every later child up a place
+            if item is not None:
+                items.append(item)
+        if not items:
+            return None
         return self._with_line_ending(answer.render(start, items))
 
     def _build_child_query_handlers(self) -> None:

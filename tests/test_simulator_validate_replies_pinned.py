@@ -617,11 +617,7 @@ EXPECTED: dict = {'framing_all_terminated': [('info',
  'notification_json_set_by_path': [],
  'notification_json_set_shorthand': [],
  'notification_no_rules': [],
- 'notification_not_json_rule_keys': [('info',
-                                      'reply_framing',
-                                      '1 simulator reply checked, all terminated with '
-                                      "'\\\\r\\\\n'."),
-                                     ('warning',
+ 'notification_not_json_rule_keys': [('warning',
                                       'notifications',
                                       'notification \'level\' emits \'{"quality": 1}\' which '
                                       'matches no driver response pattern, so the driver will '
