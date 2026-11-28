@@ -283,7 +283,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 3,
+        "n": 2,
         "t": 0
       }
     ],
@@ -423,7 +423,7 @@
         "t": 2
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -444,7 +444,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -485,7 +485,7 @@
         "t": 1
       },
       {
-        "r": "--panel-accent: #e91e63; --panel-bg: #f5f5f5; --panel-text: #212121; --panel-button-bg: #e0e0e0; --panel-button-text: #424242;",
+        "r": "--panel-bg: #f5f5f5; --panel-text: #212121; --panel-accent: #e91e63; --panel-button-bg: #e0e0e0; --panel-button-text: #212121; --panel-button-border: #bdbdbd; --panel-danger: #d32f2f; --panel-success: #388e3c; --panel-warning: #f57c00; --panel-surface: #ffffff; --panel-surface-border: #e0e0e0; --panel-border-radius: 0.5714rem;",
         "ff": "Verdana",
         "bg": [
           [
@@ -573,7 +573,7 @@
         "t": 1
       },
       {
-        "r": "--panel-accent: #e91e63; --panel-bg: #f5f5f5; --panel-text: #212121; --panel-button-bg: #e0e0e0; --panel-button-text: #424242;",
+        "r": "--panel-bg: #f5f5f5; --panel-text: #212121; --panel-accent: #e91e63; --panel-button-bg: #e0e0e0; --panel-button-text: #212121; --panel-button-border: #bdbdbd; --panel-danger: #d32f2f; --panel-success: #388e3c; --panel-warning: #f57c00; --panel-surface: #ffffff; --panel-surface-border: #e0e0e0; --panel-border-radius: 0.5714rem;",
         "ff": "Verdana",
         "bg": [
           [
@@ -661,7 +661,7 @@
         "t": 1
       },
       {
-        "r": "--panel-accent: #e91e63; --panel-bg: #f5f5f5; --panel-text: #212121; --panel-button-bg: #e0e0e0; --panel-button-text: #424242;",
+        "r": "--panel-bg: #f5f5f5; --panel-text: #212121; --panel-accent: #e91e63; --panel-button-bg: #e0e0e0; --panel-button-text: #212121; --panel-button-border: #bdbdbd; --panel-danger: #d32f2f; --panel-success: #388e3c; --panel-warning: #f57c00; --panel-surface: #ffffff; --panel-surface-border: #e0e0e0; --panel-border-radius: 0.5714rem;",
         "ff": "Verdana",
         "bg": [
           [
@@ -791,7 +791,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -809,7 +809,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -830,8 +830,8 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #303030;",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(48, 48, 48);"
@@ -848,8 +848,8 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #303030;",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(48, 48, 48);"
@@ -870,7 +870,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(48, 48, 48);"
@@ -964,7 +964,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-accent: #123123; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #123123; --panel-button-bg: #444444;",
         "ff": "Courier",
         "bg": [
           [
@@ -982,7 +982,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-accent: #123123; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #123123; --panel-button-bg: #444444;",
         "ff": "Courier",
         "bg": [
           [
@@ -1000,7 +1000,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-accent: #010101; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #010101; --panel-button-bg: #444444;",
         "ff": "Arial",
         "bg": [
           [
@@ -1018,7 +1018,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-accent: #010101; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #010101; --panel-button-bg: #444444;",
         "ff": "Arial",
         "bg": [
           [
@@ -1036,7 +1036,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -1054,7 +1054,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-surface: #111111; --panel-border-radius: 1.25rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -1170,7 +1170,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #303030;",
         "ff": "",
         "bg": [
           [
@@ -1188,7 +1188,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #303030;",
         "ff": "",
         "bg": [
           [
@@ -1209,7 +1209,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -1227,7 +1227,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -1248,8 +1248,8 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #101820; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-text: #e0e0e0; --panel-border-radius: 0.5rem;",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -1266,8 +1266,8 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #101820; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-text: #e0e0e0; --panel-border-radius: 0.5rem;",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -1287,11 +1287,11 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "",
+        "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(16, 24, 32);"
+            null
           ]
         ],
         "b": [
@@ -1306,7 +1306,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -1324,7 +1324,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -1424,7 +1424,7 @@
         "t": 2
       },
       {
-        "r": "--panel-bg: #303030; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #303030;",
         "ff": "",
         "bg": [
           [
@@ -1442,39 +1442,39 @@
         "t": 1
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #303030;",
+        "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(32, 32, 32);"
+            "position: relative; background-color: rgb(16, 24, 32);"
           ]
         ],
         "b": [
-          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
         ],
         "gc": [
-          "#00ff00"
+          "#4CAF50"
         ],
         "nb": 0,
-        "n": 4,
+        "n": 3,
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #303030;",
+        "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(32, 32, 32);"
+            "position: relative; background-color: rgb(16, 24, 32);"
           ]
         ],
         "b": [
-          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
         ],
         "gc": [
-          "#00ff00"
+          "#4CAF50"
         ],
         "nb": 0,
-        "n": 4,
+        "n": 3,
         "t": 0
       }
     ],
@@ -1540,7 +1540,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -1558,7 +1558,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "--panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -1566,43 +1566,28 @@
           ]
         ],
         "b": [
-          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+          "background-color: rgb(101, 67, 33); color: rgb(254, 254, 254); position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
         ],
         "gc": [
-          "#4CAF50"
+          "#00ff00"
         ],
         "nb": 0,
         "n": 4,
+        "fx": [
+          "/api/themes/t1"
+        ],
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #101820; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-text: #e0e0e0; --panel-border-radius: 0.5rem;",
+        "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(32, 32, 32);"
+            "position: relative; background-color: rgb(16, 24, 32);"
           ]
         ],
         "b": [
-          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
-        ],
-        "gc": [
-          "#4CAF50"
-        ],
-        "nb": 0,
-        "n": 4,
-        "t": 0
-      },
-      {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
-        "bg": [
-          [
-            "position: relative; background-color: rgb(32, 32, 32);"
-          ]
-        ],
-        "b": [
-          "position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
         ],
         "gc": [
           "#4CAF50"
@@ -1612,11 +1597,32 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "--panel-bg: #101820; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-text: #e0e0e0; --panel-border-radius: 0.5rem;",
+        "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(32, 32, 32);"
+            "position: relative; background-color: rgb(16, 24, 32);"
+          ]
+        ],
+        "b": [
+          "background-color: rgb(18, 52, 86); border-radius: 4rem; position: absolute; left: 5%; top: 5%; width: 25%; height: 20%;"
+        ],
+        "gc": [
+          "#4CAF50"
+        ],
+        "nb": 0,
+        "n": 6,
+        "fx": [
+          "/api/themes/t3"
+        ],
+        "t": 0
+      },
+      {
+        "r": "",
+        "ff": "",
+        "bg": [
+          [
+            null
           ]
         ],
         "b": [
@@ -1626,7 +1632,7 @@
           "#4CAF50"
         ],
         "nb": 0,
-        "n": 5,
+        "n": 7,
         "t": 0
       }
     ],
@@ -1933,11 +1939,11 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #00ff00; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
+        "r": "",
         "ff": "",
         "bg": [
           [
-            "position: relative; background-color: rgb(0, 255, 0);"
+            null
           ]
         ],
         "b": [
@@ -2173,7 +2179,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "r": "--panel-bg: #121212;",
         "ff": "",
         "bg": [
           [
@@ -2192,7 +2198,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "r": "--panel-bg: #121212;",
         "ff": "",
         "bg": [
           [
@@ -2211,7 +2217,7 @@
         "t": 0
       },
       {
-        "r": "--panel-bg: #121212; --panel-accent: #00aa00;",
+        "r": "--panel-bg: #121212;",
         "ff": "",
         "bg": [
           [
@@ -2413,7 +2419,7 @@
         ]
       },
       {
-        "r": "font-size: 14px; --panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #ff9800; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "font-size: 14px; --panel-bg: #202020; --panel-accent: #ff9800; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -2435,7 +2441,7 @@
         ]
       },
       {
-        "r": "font-size: 14px; --panel-bg: #202020; --panel-text: #e0e0e0; --panel-accent: #00ffff; --panel-button-bg: #444444; --panel-border-radius: 0.5rem;",
+        "r": "font-size: 14px; --panel-bg: #202020; --panel-accent: #00ffff; --panel-button-bg: #444444;",
         "ff": "Georgia",
         "bg": [
           [
@@ -2457,8 +2463,8 @@
         ]
       },
       {
-        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-text: #e0e0e0; --panel-border-radius: 0.5rem;",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2479,8 +2485,8 @@
         ]
       },
       {
-        "r": "font-size: 14px; --panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "font-size: 14px; --panel-bg: #101820; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-text: #e0e0e0; --panel-border-radius: 0.5rem;",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2504,8 +2510,8 @@
         ]
       },
       {
-        "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "r": "",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2523,7 +2529,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2542,7 +2548,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2560,7 +2566,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2579,7 +2585,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2597,7 +2603,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"
@@ -2616,7 +2622,7 @@
       },
       {
         "r": "--panel-bg: #101820; --panel-text: #e0e0e0; --panel-accent: #2196f3; --panel-button-bg: #333333; --panel-border-radius: 0.5rem;",
-        "ff": "Georgia",
+        "ff": "",
         "bg": [
           [
             "position: relative; background-color: rgb(16, 24, 32);"

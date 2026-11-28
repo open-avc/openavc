@@ -408,6 +408,17 @@ SCENARIOS = [
     # gives a page with none, and the Theme Studio's control picker, pinned
     # whole (tests/fixtures/panel_theme_pins.json).
     "theme_applies_and_waits_as_today",
+    # A definition's theme goes on whole and alone: a failed redraw leaves the
+    # next theme free to go on, the theme named last is the one drawn (an
+    # answer fetched before a save included), a variable the new theme leaves
+    # out goes back to the stylesheet's, and a theme that cannot be had still
+    # takes the project's settings, with the light built-in's colours for a
+    # light project.
+    "a_theme_redraw_that_fails_leaves_the_next_theme_free_to_go_on",
+    "two_themes_asked_for_draw_the_one_asked_for_last",
+    "a_theme_asked_for_before_it_was_saved_is_not_drawn_over_the_saved_one",
+    "a_variable_the_new_theme_lacks_is_taken_off_the_page",
+    "a_theme_that_cannot_be_had_still_takes_the_projects_settings",
     # ui.<id>.label, bg_color, text_color, opacity and visible set and cleared
     # on every kind of control, over a look and a visible_when, before a draw
     # and through a redraw, pinned whole (tests/fixtures/panel_override_pins.json).

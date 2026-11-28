@@ -31,7 +31,9 @@ BANNER = """\
 // on: `css_property` is the custom property it becomes (null for the font,
 // which goes on the page body), `fallback` what the panel draws when a theme
 // leaves it out, and `kind` whether it is a `color`, a `length` (a number is
-// rem) or a `font`. `settings_over_theme` is the project settings that paint
+// rem) or a `font`. `light_fallback` is what the panel draws over those
+// fallbacks for a light project whose theme cannot be had: the light built-in
+// theme's variables. `settings_over_theme` is the project settings that paint
 // over a theme's variables, in the order they apply: `variable` is the one
 // each sets (null for `theme_overrides`, which names its own), and `blank` what
 // the setting holds when it leaves the theme's own.
@@ -55,6 +57,7 @@ export interface SettingOverTheme {
 
 export const THEME_VALUES = %(table)s as const satisfies {
   readonly variables: readonly ThemeVariable[];
+  readonly light_fallback: Readonly<Record<string, string | number>>;
   readonly settings_over_theme: readonly SettingOverTheme[];
 };
 """

@@ -7678,8 +7678,7 @@ const tests = {
     async frames_custom_control_draws_opens_and_bridges_as_today() {
         const got = {};
         const themed = document.documentElement.style;
-        themed.setProperty('--panel-bg', '#123456');
-        themed.setProperty('--panel-border-radius', '6px');
+        frameTheme = { variables: { panel_bg: '#123456', border_radius: '6px' } };
         try {
             await frameCase(got, 'granted', customDef('cc', { grant: FRAME_GRANT, custom_config: { room: '204' }, style: { bg_color: '#222' } }));
             await frameCase(got, 'no_grant', customDef('cc'));
@@ -7701,6 +7700,7 @@ const tests = {
                 },
             });
         } finally {
+            frameTheme = null;
             themed.removeProperty('--panel-bg');
             themed.removeProperty('--panel-border-radius');
         }
@@ -8155,6 +8155,10 @@ const FRAME_MESSAGES = [
  * `before(app)` runs before the page is drawn. `take()` returns, and clears,
  * everything the panel did since the last take.
  */
+// The theme a frame case's server answers with, when one is set: what the
+// panel puts on the document and tells the frame.
+let frameTheme = null;
+
 function frameMount(def, { edit, answer, before, page } = {}) {
     const r = { ws: [], warn: [], posted: [], toParent: [], fetched: [], listen: [], rejected: [], idle: 0 };
     const onRejection = (e) => r.rejected.push(String(e && e.message));
@@ -8169,6 +8173,9 @@ function frameMount(def, { edit, answer, before, page } = {}) {
         // not the frame's request, and whether it lands here is timing.
         if (String(url).includes('/api/panel/access')) return saved.fetch(url, init);
         r.fetched.push(init === undefined ? String(url) : `${url} ${JSON.stringify(init)}`);
+        if (frameTheme && String(url).includes('/api/themes/')) {
+            return { ok: true, status: 200, json: async () => JSON.parse(JSON.stringify(frameTheme)) };
+        }
         return answer ? answer(String(url), init) : { ok: true, status: 200, json: async () => ({}) };
     };
     window.addEventListener = function (type, fn, ...rest) {
@@ -10022,6 +10029,147 @@ Object.assign(tests, {
             m.look({ names });
         });
         comparePins('theme', got, THEME_PINS.theme);
+    },
+});
+
+// --- One theme put on at a time, and only the one asked for last -------------
+//
+// A definition's theme goes on whole: its variables with the project's
+// settings over them, whether the theme was fetched, handed over, or could not
+// be had at all. A variable the new theme leaves out goes back to the
+// stylesheet's own, an answer for a theme nobody names any more (or one asked
+// for before the theme was saved) changes nothing, and a redraw that fails
+// leaves the theme it was drawing, and every later one, free to go on.
+
+/** A theme case run as a check: the first failed assertion fails the scenario. */
+async function themeCheck(opts, script) {
+    const got = {};
+    await themeCase(got, 'check', opts, script);
+    const threw = got.check.find((step) => step.threw);
+    if (threw) throw new Error(threw.threw);
+}
+
+/** A custom property on the document, as the theme left it. */
+function rootVar(name) {
+    return document.documentElement.style.getPropertyValue(name);
+}
+
+/** The light built-in theme as shipped, which the panel draws for a light project whose theme cannot be had. */
+function lightBuiltIn() {
+    const file = path.join(__dirname, '..', '..', 'openavc', 'themes', 'light-modern.json');
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
+
+Object.assign(tests, {
+    async a_theme_redraw_that_fails_leaves_the_next_theme_free_to_go_on() {
+        const t1 = themeFixture('t1');
+        const t2 = themeFixture('t2', {
+            variables: { panel_bg: '#202020' }, element_defaults: { button: { bg_color: '#654321' } },
+        });
+        await themeCheck({ answers: { t1, t2 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            // The third draw is the redraw t2's arrival asks for.
+            m.failDraw = (n) => n === 3;
+            m.definition({ theme_id: 't2' }); await m.wait(10);
+            m.failDraw = null;
+            assert(m.n === 3, `the redraw was asked for and failed, drew ${m.n} times`);
+            assert(m.app.theme.styleFor('button', {}).bg_color === '#654321',
+                `the theme whose redraw failed keeps its element defaults, got ${JSON.stringify(m.app.theme.styleFor('button', {}))}`);
+            assert(rootVar('--panel-bg') === '#202020', `t2 stays on the page, got ${rootVar('--panel-bg')}`);
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#101820', `the next theme goes on, got ${rootVar('--panel-bg')}`);
+            assert(m.app.theme.styleFor('button', {}).bg_color === '#123456',
+                `and its element defaults with it, got ${JSON.stringify(m.app.theme.styleFor('button', {}))}`);
+            const drawn = m.n;
+            m.definition({ theme_id: 't2' }); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#202020' && m.n > drawn + 1,
+                `and the one after, redrawn when it lands, got ${rootVar('--panel-bg')} after ${m.n - drawn} draws`);
+        });
+    },
+
+    async two_themes_asked_for_draw_the_one_asked_for_last() {
+        const t1 = themeFixture('t1');
+        const t2 = themeFixture('t2', { variables: { panel_bg: '#202020' }, element_defaults: { button: { bg_color: '#222222' } } });
+        const t3 = themeFixture('t3', { variables: { panel_bg: '#303030' }, element_defaults: { button: { bg_color: '#333333' } } });
+        await themeCheck({ answers: { t1, t2: { after: 500, answer: t2 }, t3: { after: 100, answer: t3 } } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 't2' }); m.definition({ theme_id: 't3' });
+            await m.wait(100);
+            assert(rootVar('--panel-bg') === '#303030', `t3 answers first and goes on, got ${rootVar('--panel-bg')}`);
+            await m.wait(400); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#303030', `t2's late answer is for a theme nobody names, got ${rootVar('--panel-bg')}`);
+            assert(m.app.theme.styleFor('button', {}).bg_color === '#333333',
+                `the element defaults are t3's, got ${JSON.stringify(m.app.theme.styleFor('button', {}))}`);
+            // A theme in hand named while another is on its way.
+            m.definition({ theme_id: 't2' }); m.definition({ theme_id: 't3' }); await m.wait(500); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#303030', `the theme in hand, named last, stays on, got ${rootVar('--panel-bg')}`);
+        });
+    },
+
+    async a_theme_asked_for_before_it_was_saved_is_not_drawn_over_the_saved_one() {
+        const t0 = themeFixture('t0');
+        const before = themeFixture('t1', { variables: { panel_bg: '#111111' } });
+        const saved = themeFixture('t1', { variables: { panel_bg: '#222222' } });
+        await themeCheck({ answers: { t0 } }, async (m) => {
+            const answers = [{ after: 500, answer: before }, { after: 100, answer: saved }];
+            const others = window.fetch;
+            window.fetch = (url) => (String(url).endsWith('/api/themes/t1') ? themeAnswer(answers.shift()) : others(url));
+            m.snapshot(); m.definition({ theme_id: 't0' }); await m.wait(10);
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.app.handleMessage({ type: 'themes.changed', theme_id: 't1' });
+            await m.wait(100);
+            assert(rootVar('--panel-bg') === '#222222', `the theme as saved goes on, got ${rootVar('--panel-bg')}`);
+            await m.wait(400); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#222222', `the answer asked for before the save is not drawn, got ${rootVar('--panel-bg')}`);
+        });
+    },
+
+    async a_variable_the_new_theme_lacks_is_taken_off_the_page() {
+        const t1 = themeFixture('t1');
+        const t2 = themeFixture('t2', { variables: { panel_bg: '#202020', font_family: 'Georgia' } });
+        await themeCheck({ answers: { t1, t2 } }, async (m) => {
+            document.documentElement.style.setProperty('--not-a-theme-variable', '7px');
+            m.snapshot(); m.definition({ theme_id: 't1', accent_color: '#123123' }); await m.wait(10);
+            assert(rootVar('--panel-text') === '#e0e0e0' && rootVar('--panel-accent') === '#123123',
+                `t1 with the accent setting, got ${rootVar('--panel-text')} ${rootVar('--panel-accent')}`);
+            m.definition({ theme_id: 't2' }); await m.wait(10);
+            assert(rootVar('--panel-text') === '', `t2 sets no text colour: the stylesheet's own draws, got ${rootVar('--panel-text')}`);
+            assert(rootVar('--panel-accent') === '', `nor an accent, and the setting is gone, got ${rootVar('--panel-accent')}`);
+            assert(document.body.style.fontFamily === 'Georgia', `t2's font, got ${document.body.style.fontFamily}`);
+            m.definition({ theme_id: 't1' }); await m.wait(10);
+            assert(document.body.style.fontFamily === '', `t1 sets no font, got ${document.body.style.fontFamily}`);
+            // An override left blank leaves the theme's own value.
+            m.definition({ theme_id: 't1', theme_overrides: { panel_bg: null, accent: '' } }); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#101820' && rootVar('--panel-accent') === '#2196f3',
+                `a blank override leaves the theme's value, got ${rootVar('--panel-bg')} ${rootVar('--panel-accent')}`);
+            assert(rootVar('--not-a-theme-variable') === '7px', 'a property that is no theme variable is left alone');
+        });
+    },
+
+    async a_theme_that_cannot_be_had_still_takes_the_projects_settings() {
+        const t1 = themeFixture('t1');
+        await themeCheck({ answers: { t1 } }, async (m) => {
+            m.snapshot(); m.definition({ theme_id: 't1' }); await m.wait(10);
+            m.definition({ theme_id: 'gone', theme_overrides: { panel_bg: '#0e1216' }, accent_color: '#e91e63' }); await m.wait(10);
+            assert(rootVar('--panel-bg') === '#0e1216', `the override goes on, got ${rootVar('--panel-bg')}`);
+            assert(rootVar('--panel-accent') === '#e91e63', `the accent setting goes on, got ${rootVar('--panel-accent')}`);
+            assert(rootVar('--panel-text') === '', `t1's text colour is taken off, got ${rootVar('--panel-text')}`);
+            assert(m.app.theme.styleFor('button', {}).bg_color === undefined, 'no element defaults');
+            const surface = m.app.root.querySelector(':scope > .panel-page');
+            assert(surface.style.backgroundColor === '', `t1's page colour is not painted, got ${surface.style.backgroundColor}`);
+            // A light project draws the light built-in's colours.
+            m.definition({ theme: 'light', theme_id: 'gone' }); await m.wait(10);
+            const light = lightBuiltIn().variables;
+            for (const [name, value] of Object.entries(light)) {
+                if (name === 'font_family') {
+                    assert(document.body.style.fontFamily === value, `the light font, got ${document.body.style.fontFamily}`);
+                    continue;
+                }
+                const property = `--panel-${name.replace(/^panel_/, '').replace(/_/g, '-')}`;
+                const want = typeof value === 'number' ? `${value}rem` : value;
+                assert(rootVar(property) === want, `${property} is the light theme's ${want}, got ${rootVar(property)}`);
+            }
+        });
     },
 });
 

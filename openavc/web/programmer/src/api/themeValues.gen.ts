@@ -7,7 +7,9 @@
 // on: `css_property` is the custom property it becomes (null for the font,
 // which goes on the page body), `fallback` what the panel draws when a theme
 // leaves it out, and `kind` whether it is a `color`, a `length` (a number is
-// rem) or a `font`. `settings_over_theme` is the project settings that paint
+// rem) or a `font`. `light_fallback` is what the panel draws over those
+// fallbacks for a light project whose theme cannot be had: the light built-in
+// theme's variables. `settings_over_theme` is the project settings that paint
 // over a theme's variables, in the order they apply: `variable` is the one
 // each sets (null for `theme_overrides`, which names its own), and `blank` what
 // the setting holds when it leaves the theme's own.
@@ -108,6 +110,21 @@ export const THEME_VALUES = {
       "kind": "font"
     }
   ],
+  "light_fallback": {
+    "panel_bg": "#f5f5f5",
+    "panel_text": "#212121",
+    "accent": "#1976D2",
+    "button_bg": "#e0e0e0",
+    "button_text": "#212121",
+    "button_border": "#bdbdbd",
+    "danger": "#d32f2f",
+    "success": "#388e3c",
+    "warning": "#f57c00",
+    "surface": "#ffffff",
+    "surface_border": "#e0e0e0",
+    "border_radius": 0.5714,
+    "font_family": "Inter, system-ui, sans-serif"
+  },
   "settings_over_theme": [
     {
       "setting": "theme_overrides",
@@ -127,5 +144,6 @@ export const THEME_VALUES = {
   ]
 } as const satisfies {
   readonly variables: readonly ThemeVariable[];
+  readonly light_fallback: Readonly<Record<string, string | number>>;
   readonly settings_over_theme: readonly SettingOverTheme[];
 };

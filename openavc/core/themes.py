@@ -19,7 +19,9 @@ whether a theme is light or dark.
 - **Variables.** ``VARIABLES`` is every variable a theme sets: the CSS custom
   property the panel puts it on (none for the font, which goes on the page
   body) and what the panel draws when a theme leaves it out (its stylesheets'
-  ``:root`` and body font, held to this table by a test).
+  ``:root`` and body font, held to this table by a test). A light project
+  whose theme cannot be had draws the light built-in's variables over those
+  (:func:`light_fallback`).
 - **Settings over a theme.** ``SETTINGS_OVER_THEME`` is the project settings
   that paint over a theme's variables, in the order they apply, and the
   variable each one sets (``theme_overrides`` names its own). A blank one
@@ -55,7 +57,7 @@ log = get_logger(__name__)
 __all__ = [
     "BUILTIN_DIR", "CustomDir", "ID_PATTERN", "MODES", "SETTINGS_OVER_THEME", "VARIABLES",
     "SettingOverTheme", "ThemeRefused", "ThemeVariable", "all_themes",
-    "check_theme", "find_theme", "is_builtin", "project_themes_dir",
+    "check_theme", "find_theme", "is_builtin", "light_fallback", "project_themes_dir",
     "relative_luminance", "rgb_channels", "theme_file", "theme_mode",
     "theme_values",
 ]
@@ -358,9 +360,23 @@ def theme_mode(theme: dict[str, Any]) -> str:
 # --- The table the panel and the Builder read -------------------------------------
 
 
+def light_fallback() -> dict[str, Any]:
+    """The variables a panel draws for a light project whose theme cannot be
+    had: the light built-in's own, which a light project with no theme id
+    draws. A dark project draws the stylesheet's, each variable's ``fallback``."""
+    # The project schema names the light built-in; imported here, not at the
+    # top, so the theme rule does not load the project schema for its routes.
+    from openavc.core.project_loader import UISettings
+
+    _, by_mode = UISettings.BLANK_FROM["theme_id"]
+    own = find_theme(by_mode[LIGHT], None)["variables"]
+    return {variable.name: own[variable.name] for variable in VARIABLES if variable.name in own}
+
+
 def theme_values() -> dict[str, Any]:
-    """The variables and the settings over a theme, as the generated files carry them."""
+    """The variables, the light look and the settings over a theme, as the generated files carry them."""
     return {
         "variables": [asdict(variable) for variable in VARIABLES],
+        "light_fallback": light_fallback(),
         "settings_over_theme": [asdict(setting) for setting in SETTINGS_OVER_THEME],
     }

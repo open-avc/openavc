@@ -5,13 +5,21 @@
  * schema gives its light / dark setting: `themeIdOf`, modules/project_values.js);
  * `PanelTheme` fetches it -- or takes the working copy the Theme Studio hands
  * over, which applies within a frame -- and puts its variables on the
- * document as `--panel-*` custom properties, overlaid by the project's
- * `theme_overrides` and then the `accent_color` and `font_family` settings.
- * What it keeps afterwards is what every renderer draws from: the element
- * defaults merged under a control's own style (`styleFor`), and the variables
- * actually applied, which a page with no background of its own resolves the
- * theme's `page_defaults` against (`paintBackground`). A theme that cannot be
- * had falls back to a plain light or dark look.
+ * document as `--panel-*` custom properties, with the project settings the
+ * theme rule's table names painted over them (`theme_overrides`, then
+ * `accent_color` and `font_family`). A theme goes on whole: a variable it
+ * leaves out is taken off, so the stylesheet's own draws, and a theme that
+ * cannot be had goes on the same way as one with no variables (the light
+ * built-in's for a project set to light), the settings still over it. What it
+ * keeps afterwards is what every renderer draws from: the element defaults
+ * merged under a control's own style (`styleFor`), and the variables actually
+ * applied, which a page with no background of its own resolves the theme's
+ * `page_defaults` against (`paintBackground`).
+ *
+ * Themes asked for one after another may answer in any order: an answer goes
+ * on only while its theme is still the one asked for last, and was asked for
+ * since that theme last changed on the server (`takeChange`,
+ * `takeSavedCount`).
  *
  * The rule worth knowing before changing anything here: element defaults are
  * merged into what each renderer draws, so a theme that moves them only shows
@@ -40,15 +48,10 @@ import { THEME_VALUES } from './theme_values.gen.js';
 // first anyway -- and repaints when the theme finally lands.
 export const FIRST_THEME_WAIT_MS = 1000;
 
-// Theme variables and the custom properties they become, from the theme
-// rule's table (openavc/core/themes.py). Hover and the active button's colour
-// derive from these in CSS; a few are used by no rule in panel-elements.css
-// and are there for theme authors and user CSS, through var(--panel-*).
-const CSS_VARIABLES = Object.fromEntries(
-    THEME_VALUES.variables
-        .filter(variable => variable.css_property)
-        .map(variable => [variable.name, variable.css_property]),
-);
+/** A map of named values (a theme, its variables, an override map), or null for anything else. */
+function namedValues(value) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+}
 
 /** A theme from the server, or null when there is none to be had. */
 function fetchTheme(themeId) {
@@ -57,38 +60,67 @@ function fetchTheme(themeId) {
             if (!res.ok) return null;
             return res.json().catch(() => null);
         })
+        .then(namedValues)
         .catch(() => null);
 }
 
-/** Set the theme's variables on the document, and its font on the body. */
-function setDocumentVariables(vars) {
-    const root = document.documentElement;
-    for (const [key, cssVar] of Object.entries(CSS_VARIABLES)) {
-        if (vars[key] != null) {
-            // Numeric theme variables are measurements, and every stored
-            // measurement is rem now -- the same unit the stylesheets and
-            // the migration speak.
-            const val = typeof vars[key] === 'number' ? vars[key] + 'rem' : vars[key];
-            root.style.setProperty(cssVar, val);
-        }
-    }
-    if (vars.font_family) {
-        document.body.style.fontFamily = vars.font_family;
-    }
+/**
+ * What a definition draws when its theme cannot be had: no variables, so the
+ * stylesheet's own (each variable's fallback in the theme rule's table), or
+ * the light built-in's for a project set to light.
+ */
+function fallbackTheme(settings) {
+    const variables = settings.theme === 'light' ? THEME_VALUES.light_fallback : {};
+    return { id: null, variables, element_defaults: {} };
+}
+
+/** A value that leaves the theme's own in place: none, or empty text. */
+function leavesTheTheme(value) {
+    return value == null || value === '';
 }
 
 /**
- * The two per-setting overrides, which take priority over the theme's
- * variables: on the document, and in `vars` so a page default reads them too.
+ * The variables a theme draws with: its own, with the project's settings over
+ * them in the order the theme rule's table gives (`theme_overrides` naming its
+ * own variables, the others one each). A setting or override left blank
+ * leaves the theme's value.
  */
-function applySettings(vars, settings) {
-    if (settings.accent_color) {
-        document.documentElement.style.setProperty('--panel-accent', settings.accent_color);
-        vars.accent = settings.accent_color;
+function variablesOver(theme, settings) {
+    const vars = { ...namedValues(theme.variables) };
+    for (const { setting, variable } of THEME_VALUES.settings_over_theme) {
+        const given = variable === null ? namedValues(settings[setting]) : { [variable]: settings[setting] };
+        for (const [name, value] of Object.entries(given || {})) {
+            if (!leavesTheTheme(value)) vars[name] = value;
+        }
     }
-    if (settings.font_family) {
-        document.body.style.fontFamily = settings.font_family;
-        vars.font_family = settings.font_family;
+    return vars;
+}
+
+/**
+ * A variable's value as CSS: a number is a measurement, and every stored
+ * measurement is rem -- the unit the stylesheets and the migration speak.
+ * None is empty, which takes the value off.
+ */
+function cssValue(value) {
+    if (leavesTheTheme(value)) return '';
+    return typeof value === 'number' ? `${value}rem` : String(value);
+}
+
+/**
+ * Put the variables on the document: each one the theme rule's table names as
+ * its custom property, and the font on the body. One the variables leave out
+ * is taken off, so the stylesheet's own draws rather than the last theme's.
+ * Hover and the active button's colour derive from these in CSS; a few are
+ * used by no rule in panel-elements.css and are there for theme authors and
+ * user CSS, through var(--panel-*).
+ */
+function putOnDocument(vars) {
+    const root = document.documentElement;
+    for (const { name, css_property: property } of THEME_VALUES.variables) {
+        const value = cssValue(vars[name]);
+        if (!property) document.body.style.fontFamily = value;
+        else if (value) root.style.setProperty(property, value);
+        else root.style.removeProperty(property);
     }
 }
 
@@ -203,8 +235,17 @@ export class PanelTheme {
         // The variables the applied theme is actually drawing from, which is
         // not theme.variables: see _put.
         this.variables = {};
+        // The applied theme's page_defaults, which a page with no background
+        // of its own takes (paintBackground).
+        this.pageDefaults = null;
         // The theme in hand, used again while the definition names it.
         this.current = null;
+        // The last theme asked for and the settings over it (apply): an
+        // answer for any other theme is for nobody.
+        this._asked = { themeId: null, settings: {} };
+        // How many times a saved theme has changed under the panel: an answer
+        // asked for before the last change is the file as it was.
+        this._changes = 0;
         // The Theme Studio's working copy (takeWorkingCopy).
         this.inline = null;
         // The Builder's count of saved-theme changes last seen (takeSavedCount).
@@ -238,48 +279,47 @@ export class PanelTheme {
      */
     takeSavedCount(msg) {
         if (!Object.prototype.hasOwnProperty.call(msg, 'themesVersion')) return;
-        if (this._savedCount !== undefined && msg.themesVersion !== this._savedCount) this.current = null;
+        if (this._savedCount !== undefined && msg.themesVersion !== this._savedCount) this._letGo();
         this._savedCount = msg.themesVersion;
     }
 
-    /** Put a theme on the page, and redraw it if that changed how elements look.
+    /** Put a theme on the page, and redraw it if that changed how it looks.
      *
      *  Returns a promise that settles once a theme (or the fallback) has been
      *  applied, so the first draw can wait for it rather than drawing the whole
-     *  page twice. `repaint: false` is for exactly that caller: it is about to
-     *  draw the page itself, so there is nothing yet to repaint.
+     *  page twice. It never rejects. `repaint: false` is for exactly that
+     *  caller: it is about to draw the page itself, so there is nothing yet to
+     *  repaint.
+     *
+     *  Themes are asked for one after another and answer in any order: an
+     *  answer goes on only while the theme it is for is still the one asked
+     *  for last, and was asked for since that theme last changed, with the
+     *  settings asked for last over it.
      */
     apply(settings, { repaint = true } = {}) {
-        const themeId = themeIdOf(settings);
-        const overrides = settings.theme_overrides || {};
-
         if (this._applying) return Promise.resolve();
-
-        const before = JSON.stringify(this.elementDefaults || {});
-        const repaintIfLookChanged = () => this._repaintIfChanged(before, repaint);
+        const themeId = themeIdOf(settings);
+        this._asked = { themeId, settings };
 
         // The Theme Studio's working copy, applied synchronously without
         // hitting the network so picker drags reflect within a frame instead
         // of after a round-trip; else the theme already in hand.
         const held = this._held(themeId);
         if (held) {
-            this._put(held, overrides, settings);
             this.current = held;
-            repaintIfLookChanged();
+            this._putOn(held, settings, repaint);
             return Promise.resolve();
         }
 
+        const changes = this._changes;
         return fetchTheme(themeId)
             .then(theme => {
-                if (theme) {
-                    this._put(theme, overrides, settings);
-                    this.current = theme;
-                } else {
-                    this._fallBack(settings);
-                }
-                repaintIfLookChanged();
+                if (changes !== this._changes || this._asked.themeId !== themeId) return;
+                if (theme) this.current = theme;
+                const asked = this._asked.settings;
+                this._putOn(theme || fallbackTheme(asked), asked, repaint);
             })
-            .catch(() => this._fallBack(settings));
+            .catch(err => console.warn('[panel] the page could not be drawn again with its theme:', err));
     }
 
     /** Draw the page for a definition that has just arrived: now, or the first time, once the theme is here. */
@@ -309,14 +349,11 @@ export class PanelTheme {
      * like the active theme.
      */
     paintBackground(surface, bg) {
-        if (setsNothing(bg)) {
-            bg = backgroundFromDefaults(this.current?.page_defaults, this.variables);
-        }
+        if (setsNothing(bg)) bg = this._pageBackground();
         if (!bg) return;
         drawBackground(surface, bg);
     }
 
-    /** The theme in hand for this id: the Theme Studio's working copy first, else the one applied last. */
     /**
      * One of the project's saved themes changed on the server (saved,
      * imported or deleted, or a whole project replaced: `themes.changed`,
@@ -333,23 +370,48 @@ export class PanelTheme {
         if (!this.firstSettled) return;
         const settings = this._host.settings() || {};
         if (themeId != null && themeId !== themeIdOf(settings)) return;
-        this.current = null;
+        this._letGo();
         this.apply(settings, { repaint: false }).then(() => this._host.draw());
     }
 
+    /** A saved theme changed: the theme in hand goes, and so does every answer already on its way. */
+    _letGo() {
+        this.current = null;
+        this._changes += 1;
+    }
+
+    /** The theme in hand for this id: the Theme Studio's working copy first, else the one applied last. */
     _held(themeId) {
         if (this.inline && this.inline.id === themeId) return this.inline;
         if (this.current && this.current.id === themeId) return this.current;
         return null;
     }
 
-    /** Ask for the page again when element defaults moved: they only take effect on a draw. */
-    _repaintIfChanged(before, repaint) {
-        if (!repaint) return;
-        if (before === JSON.stringify(this.elementDefaults || {})) return;
+    /** The page background a page with none of its own draws: the applied theme's page_defaults. */
+    _pageBackground() {
+        return backgroundFromDefaults(this.pageDefaults, this.variables);
+    }
+
+    /** What a theme changes on a page only when the page is drawn: its element defaults. */
+    _look() {
+        return JSON.stringify(this.elementDefaults);
+    }
+
+    /** Put a theme on, and ask for the page again when that moved how it looks. */
+    _putOn(theme, settings, repaint) {
+        const before = this._look();
+        this._put(theme, settings);
+        if (repaint && before !== this._look()) this._redraw();
+    }
+
+    /** The page again for a theme just put on; a redraw that fails leaves the next theme free to go on. */
+    _redraw() {
         this._applying = true;
-        this._host.repaint();
-        this._applying = false;
+        try {
+            this._host.repaint();
+        } finally {
+            this._applying = false;
+        }
     }
 
     /** Draw the first page once the theme is in hand -- but draw it regardless.
@@ -380,40 +442,23 @@ export class PanelTheme {
         });
     }
 
-    /** Apply a theme's variables, the overrides and the two settings, and keep what they make. */
-    _put(theme, overrides, settings) {
-        const vars = { ...theme.variables, ...overrides };
-        setDocumentVariables(vars);
-        applySettings(vars, settings);
-        // Store element defaults for use in rendering
-        this.elementDefaults = theme.element_defaults || {};
-        // ...and the variables every element ends up drawing from: the theme's
-        // own, overlaid with the project's theme_overrides and then the two
-        // per-setting overrides. Elements get these for free because they
-        // read the --panel-* custom properties set here; page_defaults do not,
-        // because their `var(name)` references are resolved in JS. Resolving
-        // those against theme.variables painted the page in the theme's colour
-        // while every element on it honoured the override.
-        this.variables = vars;
-    }
-
-    /** No theme to be had: the two settings, and a basic light look when it asks for light. */
-    _fallBack(settings) {
-        const root = document.documentElement;
-        if (settings.accent_color) {
-            root.style.setProperty('--panel-accent', settings.accent_color);
-        }
-        if (settings.font_family) {
-            document.body.style.fontFamily = settings.font_family;
-        }
-        // Basic light/dark fallback
-        if (settings.theme === 'light') {
-            root.style.setProperty('--panel-bg', '#f5f5f5');
-            root.style.setProperty('--panel-text', '#212121');
-            root.style.setProperty('--panel-button-bg', '#e0e0e0');
-            root.style.setProperty('--panel-button-text', '#424242');
-        }
-        this.elementDefaults = {};
+    /**
+     * Put one theme on whole, with the project's settings over its variables,
+     * and keep what it makes. The same for a theme fetched, one handed over
+     * and the fallback for one that cannot be had.
+     */
+    _put(theme, settings) {
+        // The variables every element ends up drawing from: the theme's own
+        // with the project's settings over them. Elements get these for free
+        // because they read the --panel-* custom properties set here;
+        // page_defaults do not, because their `var(name)` references are
+        // resolved in JS. Resolving those against theme.variables painted the
+        // page in the theme's colour while every element on it honoured the
+        // override.
+        this.variables = variablesOver(theme, settings);
+        putOnDocument(this.variables);
+        this.elementDefaults = namedValues(theme.element_defaults) || {};
+        this.pageDefaults = namedValues(theme.page_defaults);
     }
 }
 
