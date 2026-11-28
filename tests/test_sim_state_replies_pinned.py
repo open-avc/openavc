@@ -63,6 +63,30 @@ def test_with_no_template_a_value_the_map_lacks_has_no_reply():
     assert sim._format_state_reply("level", "x") is None
 
 
+def test_a_whole_match_rule_answers_with_the_bare_value_it_reads_back():
+    sim = _sim(
+        state_variables={"level": {"type": "integer", "scale": 2}},
+        responses=[{"match": r"^\d+$", "set": {"level": "$0"}}],
+    )
+    sr = sim._state_responses["level"]
+    assert sr.value_map == {} and sr.template is None
+    # the device's own number (7 / 2, rounded), which the rule reads whole
+    assert sim._format_state_reply("level", 7) == "4"
+    assert sim._format_state_reply("level", "x") is None
+
+
+def test_a_whole_match_rule_is_tried_after_the_rules_with_a_slot():
+    sim = _sim(
+        state_variables={"level": {"type": "integer"}},
+        responses=[
+            {"match": r"^\d+$", "set": {"level": "$0"}},
+            {"match": r"^LVL (\d{3})$", "set": {"level": "$1"}},
+        ],
+    )
+    assert sim._format_state_reply("level", 7) == "LVL 007"
+    assert sim._format_state_reply("level", 1234) == "1234"
+
+
 def test_a_variable_whose_only_rule_the_walk_refuses_has_no_reply():
     sim = _sim(
         state_variables={"power": {"type": "integer"}},

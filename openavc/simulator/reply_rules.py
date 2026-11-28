@@ -31,8 +31,9 @@ Every capture reference is read as the runtime reads it (``capture_ref``), so
 a ``mappings:`` entry that names no group is the whole match, as it is on the
 equipment, and has no reply to model; a ``child_list:``'s list, item id and
 start are read by the runtime's own readers (``child_routes``), so a list the
-runtime refuses is not modelled. A reply slot is a numbered capture, so a
-value read from the whole match (``$0``) has no reply either.
+runtime refuses is not modelled. A reply slot is a numbered capture; a flat
+value read from the whole match (``$0``) is answered with the bare value, when
+its rule reads that back, after every template.
 """
 
 from __future__ import annotations
@@ -170,10 +171,11 @@ class _FlatRule:
     def read_values(
         self, tables: dict[str, StateResponse], var_def_for: Callable[[str], dict]
     ) -> None:
-        """A table for each variable the rule writes, and its value: a ``$N``
-        on a pattern with captures is the template with that capture as the
-        value (a reference that is no number gives none); any other value is
-        the pattern's literal text, filed under the value."""
+        """A table for each variable the rule writes, and its value: ``$0`` is
+        the whole match, so the rule reads a bare value; a ``$N`` on a pattern
+        with captures is the template with that capture as the value (a
+        reference that is no number gives none); any other value is the
+        pattern's literal text, filed under the value."""
         for state_key, set_value in self.set_dict.items():
             if state_key not in tables:
                 tables[state_key] = StateResponse(
@@ -186,6 +188,9 @@ class _FlatRule:
             self._reverse_map(tables, mapping)
 
     def _read_value(self, sr: StateResponse, set_value: str) -> None:
+        if names_a_capture(set_value) and capture_group(set_value) == 0:
+            sr.whole_match_rules.append(rule_pattern(self.pattern, 0))
+            return
         if self._is_template(set_value):
             self._add_template(sr, set_value)
             return

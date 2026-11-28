@@ -137,6 +137,9 @@ class StateResponse(_RuleTemplates):
         self.value_map: dict[str, str] = {}  # e.g., {"true": "Amt1", "false": "Amt0"}
         self.template_rule = None
         self.alternates = []
+        # Rules reading the value from the whole match ($0): the bare value
+        # is their reply, tried after every template.
+        self.whole_match_rules: list[ReadBack] = []
 
     def add_template(self, template: str, rule: ReadBack) -> None:
         """Keep a rule's template (e.g. "In{value} All"); alternates are
@@ -144,18 +147,18 @@ class StateResponse(_RuleTemplates):
         self._keep(template, rule)
 
     def format(self, value: Any) -> str | None:
-        """The reply text for ``value``: its value map entry, else its
-        templates' first rendering read back; None when neither gives one
-        (a bare value is a line no rule reads)."""
+        """The reply text for ``value``: its value map entry, else the first
+        rendering read back, its templates' before the bare value a rule
+        reading the whole match takes; None when none reads back."""
         reply = self.value_map.get(value_words(value))
         if reply is not None:
             return reply
-        if self.template:
-            return render_first([
-                (template, rule, {})
-                for template, rule in ((self.template, self.template_rule), *self.alternates)
-            ], value, self.conversion)
-        return None
+        templates = [] if self.template is None else [
+            (template, rule, {})
+            for template, rule in ((self.template, self.template_rule), *self.alternates)
+        ]
+        templates += [("{value}", rule, {}) for rule in self.whole_match_rules]
+        return render_first(templates, value, self.conversion) if templates else None
 
 
 class ChildStateResponse(_RuleTemplates):

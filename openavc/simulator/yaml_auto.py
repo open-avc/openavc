@@ -969,7 +969,7 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
 
     def _flat_reply_text(self, var: str) -> str | None:
         """How the device reports a flat variable's current value; None when
-        no response rule describes it."""
+        no response rule describes it or none reads that value back."""
         resp = self._state_responses.get(var)
         return None if resp is None else resp.format(self._state.get(var))
 
@@ -1566,7 +1566,8 @@ class YAMLAutoSimulator(PushChannels, HTTPServerMixin, OSCDispatchMixin, TCPSimu
         report ``key``'s current value, the same text a query or a push of it
         carries (the device's own number, padded the way its response rule
         reads it), without the delimiter. None when no response rule
-        describes the key. State holds real values; this is how a handler
+        describes the key or none reads its value back. State holds real
+        values; this is how a handler
         answering several keys at once speaks the device's numbers without
         repeating every conversion."""
         return self._format_state_reply(key, self._state.get(key))
