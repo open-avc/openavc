@@ -1,17 +1,15 @@
-"""The panel's lists of the platform's own device keys, held to the server's.
+"""The panel's lists of the platform's own device keys are the server's.
 
 A control bound to a key the platform writes about a device (whether it is
-connected, its name, why it is away) keeps drawing while the device is
-unreachable; anything else under `device.` is a reading, and blanks. The panel
-decides which is which from two hand-written sets in
-`web/panel/modules/availability.js`: `DEVICE_PLATFORM_PROPS` and, for a child
-entity, `CHILD_PLATFORM_PROPS`. The server's lists are
-`core/device_info.PLATFORM_DEVICE_KEYS` (every key the device manager writes)
-and `drivers/spec.CHILD_RESERVED_PROPS`. A key added on the server only would
-blank on every panel while its device is away.
-
-Read with a regex rather than executed, like `test_theme_studio_names_mirror.py`:
-the point is to catch one side being edited without the other.
+connected, its name, why it is away, its web page) keeps drawing while the
+device is unreachable; anything else under `device.` is a reading, and blanks.
+The panel decides which is which from two sets, `DEVICE_PLATFORM_PROPS` and,
+for a child entity, `CHILD_PLATFORM_PROPS`. They are rendered from
+`core/device_info.PLATFORM_DEVICE_KEYS` and `drivers/spec.CHILD_RESERVED_PROPS`
+into `web/panel/modules/device_keys.gen.js` by
+`python -m openavc.core.device_keys_gen`, so a key the platform starts writing
+reaches every panel when the file is regenerated, and this test fails until it
+is.
 """
 
 from __future__ import annotations
@@ -20,36 +18,42 @@ import re
 from pathlib import Path
 
 from openavc.core.device_info import PLATFORM_DEVICE_KEYS
+from openavc.core.device_keys_gen import PANEL_ARTIFACT, render
 from openavc.drivers.spec import CHILD_RESERVED_PROPS
 
-AVAILABILITY_JS = (
-    Path(__file__).resolve().parents[1] / "openavc" / "web" / "panel" / "modules" / "availability.js"
-)
-
-#: Written by the platform for every device, but read by the panel as a reading
-#: from the device, so a control bound to it blanks while the device is away.
-#: Whether the panel should keep drawing it is undecided; until it is, this
-#: test holds the panel's list to the server's less this key.
-NOT_ON_THE_PANELS_LIST = {"web_ui_url"}
+REPO = Path(__file__).resolve().parents[1]
+GENERATED = REPO / PANEL_ARTIFACT
+AVAILABILITY_JS = REPO / "openavc" / "web" / "panel" / "modules" / "availability.js"
+SET_NAMES = ("DEVICE_PLATFORM_PROPS", "CHILD_PLATFORM_PROPS")
 
 
-def _panel_set(name: str) -> set[str]:
-    text = AVAILABILITY_JS.read_text(encoding="utf-8")
-    match = re.search(rf"const {name} = new Set\(\[(.*?)\]\);", text, re.S)
-    assert match, f"no {name} in {AVAILABILITY_JS.name}"
-    return set(re.findall(r"'([a-z_]+)'", match.group(1)))
+def _generated_set(name: str) -> set[str]:
+    match = re.search(rf"export const {name} = new Set\(\[(.*?)\]\);", GENERATED.read_text(encoding="utf-8"), re.S)
+    assert match, f"no {name} in {GENERATED.name}"
+    return set(re.findall(r'"([a-z_]+)"', match.group(1)))
+
+
+def test_the_committed_file_matches_a_fresh_render():
+    assert GENERATED.is_file(), f"{PANEL_ARTIFACT} is missing -- run 'python -m openavc.core.device_keys_gen'"
+    committed = GENERATED.read_text(encoding="utf-8").replace("\r\n", "\n")
+    assert committed == render(PANEL_ARTIFACT), (
+        f"{PANEL_ARTIFACT} does not match the platform's device keys -- regenerate with "
+        "'python -m openavc.core.device_keys_gen' (never edit it by hand)"
+    )
 
 
 def test_the_panel_keeps_drawing_every_device_key_the_platform_writes():
-    assert _panel_set("DEVICE_PLATFORM_PROPS") == set(PLATFORM_DEVICE_KEYS) - NOT_ON_THE_PANELS_LIST
+    assert _generated_set("DEVICE_PLATFORM_PROPS") == set(PLATFORM_DEVICE_KEYS)
 
 
 def test_the_panel_keeps_drawing_every_reserved_child_prop():
-    assert _panel_set("CHILD_PLATFORM_PROPS") == set(CHILD_RESERVED_PROPS)
+    assert _generated_set("CHILD_PLATFORM_PROPS") == set(CHILD_RESERVED_PROPS)
 
 
-def test_the_exception_is_still_one_the_platform_writes():
-    # When the panel learns the key, or the platform stops writing it, the
-    # exception goes too.
-    assert NOT_ON_THE_PANELS_LIST <= set(PLATFORM_DEVICE_KEYS)
-    assert not NOT_ON_THE_PANELS_LIST & _panel_set("DEVICE_PLATFORM_PROPS")
+def test_availability_reads_the_generated_sets_and_writes_none_of_its_own():
+    src = AVAILABILITY_JS.read_text(encoding="utf-8")
+    imported = re.search(r"import \{([^}]*)\} from '\./device_keys\.gen\.js';", src)
+    assert imported, "availability.js no longer imports the platform's keys from device_keys.gen.js"
+    assert {name.strip() for name in imported.group(1).split(",")} == set(SET_NAMES)
+    for name in SET_NAMES:
+        assert not re.search(rf"\b(?:const|let|var) {name}\b", src), f"availability.js writes its own {name}"

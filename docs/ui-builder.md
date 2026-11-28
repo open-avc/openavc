@@ -732,7 +732,7 @@ The control still works. Pressing it sends the command and shows the failure
 band above, which is usually how somebody finds out. Nothing is disabled.
 
 Two things deliberately keep working: anything bound to a device's connection
-state (`connected`, `presence`, `offline_reason`, `offline_detail`, the device's name) and
+state (`connected`, `presence`, `offline_reason`, `offline_detail`, the device's name, its web page address) and
 anything bound to a variable. Those are the parts of the page that are still
 telling the truth, so put an indicator and a reason label on any page where
 knowing which device is out matters.

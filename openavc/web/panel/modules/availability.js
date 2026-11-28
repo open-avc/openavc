@@ -54,41 +54,28 @@
  * object is replaced wholesale by a snapshot, and its element map by a redraw.
  */
 
+// The `device.<id>.*` properties the PLATFORM maintains rather than the device
+// reports (DEVICE_PLATFORM_PROPS), and a child entity's reserved props under
+// `device.<id>.<type>.<local>.<prop>` (CHILD_PLATFORM_PROPS). They describe the
+// device -- whether it is reachable, what it is called, whether it is enabled,
+// its web page -- so they stay true while it is unreachable and must keep
+// rendering. `connected` above all: an LED bound to it IS the offline report,
+// and blanking that would hide the one honest thing on the page. A child's
+// four tell the truth while the parent is away exactly as the device's own
+// pair does, so a panel bound to a child's fault draws it at the moment the
+// child has something to say. Everything else under `device.` came from the
+// far end of a wire that is no longer there. Both sets are the server's lists
+// (core/device_info.PLATFORM_DEVICE_KEYS, drivers/spec.CHILD_RESERVED_PROPS),
+// generated into device_keys.gen.js and held there by
+// tests/test_panel_platform_keys_mirror.py.
+import { CHILD_PLATFORM_PROPS, DEVICE_PLATFORM_PROPS } from './device_keys.gen.js';
+
 // The word for a device that is up: its readings count and its press
 // lands, the server's one word that takes commands (TAKES_COMMANDS).
 const ONLINE = 'online';
 // The word for a device put to sleep on purpose, whose wake control keeps
 // its reading.
 const ASLEEP = 'asleep';
-
-// The `device.<id>.*` properties the PLATFORM maintains rather than the device
-// reports. They describe the device -- whether it is reachable, what it is
-// called, whether it is enabled -- so they stay true while it is unreachable
-// and must keep rendering. `connected` above all: an LED bound to it IS the
-// offline report, and blanking that would hide the one honest thing on the
-// page. Everything else under `device.` came from the far end of a wire that
-// is no longer there. Held to core/device_info.PLATFORM_DEVICE_KEYS, every key
-// the platform writes for every device, by tests/test_panel_platform_keys_mirror.py,
-// which names the one key this list does not keep.
-const DEVICE_PLATFORM_PROPS = new Set([
-    'connected', 'enabled', 'name', 'offline_detail', 'offline_reason',
-    'orphan_reason', 'orphaned', 'paused', 'paused_for', 'presence',
-    'reconnect_attempt', 'reconnect_failed', 'restarting', 'asleep', 'wake_command',
-]);
-
-// The same set, for a child entity's reserved props. A child carries the
-// platform's own account of itself under `device.<id>.<type>.<local>.<prop>`,
-// and those four keep telling the truth while the parent is away exactly as
-// the device's own pair does -- so a label bound to one must keep rendering.
-//
-// Until this existed the split rule was accidental rather than decided: the
-// device's `offline_reason` is three segments and was exempt, its child's is
-// five and was not, so a panel bound to a child's fault drew `--` at precisely
-// the moment the child had something to say. Held to drivers/spec.CHILD_RESERVED_PROPS
-// by the same test.
-const CHILD_PLATFORM_PROPS = new Set([
-    'online', 'offline_reason', 'offline_detail', 'label',
-]);
 
 /**
  * The device a state key reports FROM, or null when it names none.

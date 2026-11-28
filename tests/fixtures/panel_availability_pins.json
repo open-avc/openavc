@@ -1164,10 +1164,6 @@
      "p_connected": {
       "r#": "false"
      },
-     "p_web_ui_url": {
-      "r@class": "panel-element panel-label device-offline",
-      "r#": "--"
-     },
      "p_gain": {
       "r@class": "panel-element panel-label device-offline",
       "r#": "--"
@@ -1199,7 +1195,6 @@
     },
     "e": [
      "p_connected:text",
-     "p_web_ui_url:text",
      "p_gain:text",
      "c_mute:text",
      "c_connected:text",
@@ -1214,10 +1209,6 @@
     "c": {
      "p_connected": {
       "r#": "true"
-     },
-     "p_web_ui_url": {
-      "r@class": "panel-element panel-label",
-      "r#": "v:p_web_ui_url"
      },
      "p_gain": {
       "r@class": "panel-element panel-label",
@@ -1250,7 +1241,6 @@
     },
     "e": [
      "p_connected:text",
-     "p_web_ui_url:text",
      "p_gain:text",
      "c_mute:text",
      "c_connected:text",
@@ -3285,7 +3275,7 @@
      "device.": null,
      "device..gain": null,
      "device.amp.connected": null,
-     "device.amp.web_ui_url": "amp",
+     "device.amp.web_ui_url": null,
      "device.amp.asleep": null,
      "devices.amp.gain": null,
      "var.volume": null,
