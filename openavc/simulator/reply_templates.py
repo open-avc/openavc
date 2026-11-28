@@ -257,11 +257,11 @@ class _PatternWalk:
     def _complete(self, emission: str | None, end: int) -> bool:
         """True when the walk read the whole pattern (to ``end``), reached
         every slot and kept each one in ``emission``, and it reads back."""
-        if emission is None or end != len(self.src) or self.found != set(self.slots):
+        if emission is None or end != len(self.src):
             return False
-        if not all(mark in emission for mark in self.marks.values()):
+        if self.found != set(self.slots):
             return False
-        return self.reads_back(emission)
+        return all(mark in emission for mark in self.marks.values()) and self.reads_back(emission)
 
     def carries_slot(self, piece: str) -> bool:
         """True when a slot was emitted into ``piece``."""
