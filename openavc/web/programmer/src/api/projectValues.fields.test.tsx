@@ -8,37 +8,45 @@ import { fireEvent, render, screen } from "@testing-library/react";
 // swapped for one with other numbers, and each field follows it; so are the
 // page rules beside it, whose overlay box is what a blank side shows.
 
-vi.mock("./projectValues.gen", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./projectValues.gen")>()),
-  PROJECT_VALUES: {
-    UIElement: { display_decimals: { default: null, min: 0, max: 7, integer: true } },
-    MonitorConfig: { display_decimals: { default: null, min: 0, max: 5, integer: true } },
-    UISettings: {
-      idle_timeout_seconds: { default: 0, min: 0, max: 600, integer: true },
-      idle_page: { default: "lobby" },
-      show_error_messages: { default: false },
-      page_transition: { default: "fade" },
-      page_transition_duration: { default: 300, min: 100, max: 900, integer: true },
-      element_entry: { default: "stagger" },
-      element_stagger_ms: { default: 40, min: 20, max: 150, integer: true },
-      element_stagger_style: { default: "scale" },
-      lock_code: { default: "", max_length: 4, digits: true },
+vi.mock("./projectValues.gen", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./projectValues.gen")>();
+  return {
+    ...actual,
+    PROJECT_VALUES: {
+      UIElement: { display_decimals: { default: null, min: 0, max: 7, integer: true } },
+      MonitorConfig: { display_decimals: { default: null, min: 0, max: 5, integer: true } },
+      UISettings: {
+        idle_timeout_seconds: { default: 0, min: 0, max: 600, integer: true },
+        idle_page: { default: "lobby" },
+        show_error_messages: { default: false },
+        page_transition: { default: "fade" },
+        page_transition_duration: { default: 300, min: 100, max: 900, integer: true },
+        element_entry: { default: "stagger" },
+        element_stagger_ms: { default: 40, min: 20, max: 150, integer: true },
+        element_stagger_style: { default: "scale" },
+        lock_code: { default: "", max_length: 4, digits: true },
+      },
+      OverlayConfig: {
+        width: { default: null, min: 10, max: 90, integer: false },
+        height: { default: null, min: 15, max: 80, integer: false },
+      },
+      TriggerConfig: {
+        delay_seconds: { default: 3, min: 1, finite: true, integer: false },
+        debounce_seconds: { default: 4, min: 2, finite: true, integer: false },
+        cooldown_seconds: { default: 6, min: 0.5, finite: true, integer: false },
+      },
+      MacroConfig: {
+        cooldown_seconds: { default: 2, min: 1, finite: true, integer: false },
+      },
     },
-    OverlayConfig: {
-      width: { default: null, min: 10, max: 90, integer: false },
-      height: { default: null, min: 15, max: 80, integer: false },
+    // Only the box is swapped: the page types beside it stay the schema's, so
+    // a page still reads as the type it is written as.
+    PAGE_RULES: {
+      ...actual.PAGE_RULES,
+      overlay_box: { overlay: { width: 41.5, height: 27.5 }, sidebar: { width: 22 } },
     },
-    TriggerConfig: {
-      delay_seconds: { default: 3, min: 1, finite: true, integer: false },
-      debounce_seconds: { default: 4, min: 2, finite: true, integer: false },
-      cooldown_seconds: { default: 6, min: 0.5, finite: true, integer: false },
-    },
-    MacroConfig: {
-      cooldown_seconds: { default: 2, min: 1, finite: true, integer: false },
-    },
-  },
-  PAGE_RULES: { overlay_box: { overlay: { width: 41.5, height: 27.5 }, sidebar: { width: 22 } } },
-}));
+  };
+});
 
 import type { MacroConfig, ProjectConfig, TriggerConfig, UIElement, UIPage, UISettings } from "./types";
 import { ShownDecimalsRow } from "../components/ui-builder/PropertySections/ValueFields";
